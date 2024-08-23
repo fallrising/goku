@@ -3,10 +3,12 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/fallrising/goku/internal/bookmark" // Update import path
 	_ "github.com/mattn/go-sqlite3"                // Import SQLite driver
+	"golang.org/x/net/html"
 )
 
 // Db is the database connection, now in the database package
@@ -179,6 +181,98 @@ func UpdateBookmark(db *sql.DB, bookmark *bookmark.Bookmark) error {
 	_, err = stmt.Exec(bookmark.URL, bookmark.Title, bookmark.Description, bookmark.GetTagsString(), bookmark.ID)
 	if err != nil {
 		return fmt.Errorf("error executing statement: %w", err)
+	}
+
+	return nil
+}
+
+// ImportBookmarksFromHTML imports bookmarks from an HTML file.
+func ImportBookmarksFromHTML(db *sql.DB, reader io.Reader) error {
+	z := html.NewTokenizer(reader)
+
+	for {
+		tt := z.Next()
+
+		switch {
+		case tt == html.ErrorToken:
+			// End of the document, return
+			return nil
+		case tt == html.StartTagToken:
+			t := z.Token()
+
+			isAnchor := t.Data == "a"
+			if !isAnchor {
+				continue
+			}
+
+			// Extract href (URL) and text content (Title)
+			var href, title string
+			for _, a := range t.Attr {
+				if a.Key == "href" {
+					href = a.Val
+				}
+			}
+
+			// Get the text content of the anchor tag
+			if z.Next() == html.TextToken {
+				title = strings.TrimSpace(z.Token().Data)
+			}
+
+			if href != "" {
+				// Add bookmark to the database
+				newBookmark := &bookmark.Bookmark{
+					URL:         href,
+					Title:       title,
+					Description: "",
+					Tags:        []string{}, // No tags from HTML import (for now)
+				}
+
+				if err := AddBookmark(db, newBookmark); err != nil {
+					// Handle error, maybe log it and continue?
+					fmt.Printf("Error adding bookmark %s: %v\n", href, err)
+				}
+			}
+		}
+	}
+}
+
+// ExportBookmarksToHTML exports bookmarks to an HTML file.
+func ExportBookmarksToHTML(db *sql.DB, writer io.Writer) error {
+	bookmarks, err := GetAllBookmarks(db)
+	if err != nil {
+		return fmt.Errorf("error retrieving bookmarks: %w", err)
+	}
+
+	// Write the HTML header
+	_, err = writer.Write([]byte(`<!DOCTYPE html>
+<html>
+<head>
+<title>Goku Bookmarks Export</title>
+</head>
+<body>
+<h1>Goku Bookmarks</h1>
+<ul>
+`))
+	if err != nil {
+		return fmt.Errorf("error writing HTML header: %w", err)
+	}
+
+	// Write each bookmark as an <li> item
+	for _, bm := range bookmarks {
+		listItem := fmt.Sprintf(`<li><a href="%s">%s</a></li>`, bm.URL, bm.Title)
+		_, err := writer.Write([]byte(listItem))
+		if err != nil {
+			return fmt.Errorf("error writing bookmark to HTML: %w", err)
+		}
+	}
+
+	// Write the HTML footer
+	_, err = writer.Write([]byte(`</ul>
+</body>
+</html>
+`))
+	if err != nil {
+		return fmt.Errorf("error writing HTML footer: %w", err)
 	}
 
 	return nil

@@ -232,14 +232,6 @@ func openBrowser(url string) {
 	}
 }
 
-func init() {
-	addCmd.Flags().StringP("tags", "t", "", "Comma-separated tags")
-	updateCmd.Flags().String("url", "", "New URL for the bookmark")
-	updateCmd.Flags().String("title", "", "New title for the bookmark")
-	updateCmd.Flags().String("description", "", "New description for the bookmark")
-	updateCmd.Flags().String("tags", "", "Comma-separated tags for the bookmark")
-}
-
 // fetchTitle fetches the title of a webpage from the given URL.
 func fetchBookmarkData(url string) (string, string, error) {
 	res, err := http.Get(url)
@@ -268,6 +260,74 @@ func fetchBookmarkData(url string) (string, string, error) {
 	return title, description, nil
 }
 
+// importCmd represents the import command
+var importCmd = &cobra.Command{
+	Use:   "import [--file FILE]",
+	Short: "Import bookmarks from an HTML file",
+	Run: func(cmd *cobra.Command, args []string) {
+		filePath, _ := cmd.Flags().GetString("file")
+		if filePath == "" {
+			fmt.Println("Please specify the HTML file using --file FILE")
+			return
+		}
+
+		// Open the HTML file
+		file, err := os.Open(filePath)
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			return
+		}
+		defer file.Close()
+
+		// Import the bookmarks from the HTML file
+		if err := database.ImportBookmarksFromHTML(database.Db, file); err != nil {
+			fmt.Println("Error importing bookmarks:", err)
+			return
+		}
+
+		fmt.Println("Bookmarks imported successfully!")
+	},
+}
+
+// exportCmd represents the export command
+var exportCmd = &cobra.Command{
+	Use:   "export [--file FILE]",
+	Short: "Export bookmarks to an HTML file",
+	Run: func(cmd *cobra.Command, args []string) {
+		filePath, _ := cmd.Flags().GetString("file")
+		if filePath == "" {
+			fmt.Println("Please specify the HTML file using --file FILE")
+			return
+		}
+
+		// Create/open the HTML file
+		file, err := os.Create(filePath)
+		if err != nil {
+			fmt.Println("Error creating file:", err)
+			return
+		}
+		defer file.Close()
+
+		// Export the bookmarks to the HTML file
+		if err := database.ExportBookmarksToHTML(database.Db, file); err != nil {
+			fmt.Println("Error exporting bookmarks:", err)
+			return
+		}
+
+		fmt.Println("Bookmarks exported successfully to", filePath)
+	},
+}
+
+func init() {
+	addCmd.Flags().StringP("tags", "t", "", "Comma-separated tags")
+	updateCmd.Flags().String("url", "", "New URL for the bookmark")
+	updateCmd.Flags().String("title", "", "New title for the bookmark")
+	updateCmd.Flags().String("description", "", "New description for the bookmark")
+	updateCmd.Flags().String("tags", "", "Comma-separated tags for the bookmark")
+	importCmd.Flags().StringP("file", "f", "", "Path to the HTML file to import")
+	exportCmd.Flags().StringP("file", "f", "", "Path to the HTML file to export to")
+}
+
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "goku",
@@ -291,6 +351,8 @@ func main() {
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(deleteCmd) // Add the delete command
 	rootCmd.AddCommand(browseCmd)
+	rootCmd.AddCommand(importCmd)
+	rootCmd.AddCommand(exportCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
