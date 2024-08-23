@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/fallrising/goku/internal/bookmark" // Update import path
 	_ "github.com/mattn/go-sqlite3"                // Import SQLite driver
@@ -236,7 +237,6 @@ func ImportBookmarksFromHTML(db *sql.DB, reader io.Reader) error {
 	}
 }
 
-// ExportBookmarksToHTML exports bookmarks to an HTML file.
 func ExportBookmarksToHTML(db *sql.DB, writer io.Writer) error {
 	bookmarks, err := GetAllBookmarks(db)
 	if err != nil {
@@ -244,33 +244,33 @@ func ExportBookmarksToHTML(db *sql.DB, writer io.Writer) error {
 	}
 
 	// Write the HTML header
-	_, err = writer.Write([]byte(`<!DOCTYPE html>
-<html>
-<head>
-<title>Goku Bookmarks Export</title>
-</head>
-<body>
-<h1>Goku Bookmarks</h1>
-<ul>
+	_, err = writer.Write([]byte(`<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<!-- This is an automatically generated file.
+     It will be read and overwritten.
+     DO NOT EDIT! -->
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
 `))
 	if err != nil {
 		return fmt.Errorf("error writing HTML header: %w", err)
 	}
 
-	// Write each bookmark as an <li> item
+	// Write each bookmark as a DT/A tag pair
 	for _, bm := range bookmarks {
-		listItem := fmt.Sprintf(`<li><a href="%s">%s</a></li>`, bm.URL, bm.Title)
-		_, err := writer.Write([]byte(listItem))
+		bookmarkItem := fmt.Sprintf("    <DT><A HREF=\"%s\" ADD_DATE=\"%d\">%s</A>\n",
+			html.EscapeString(bm.URL),
+			time.Now().Unix(),
+			html.EscapeString(bm.Title))
+		_, err := writer.Write([]byte(bookmarkItem))
 		if err != nil {
 			return fmt.Errorf("error writing bookmark to HTML: %w", err)
 		}
 	}
 
 	// Write the HTML footer
-	_, err = writer.Write([]byte(`</ul>
-</body>
-</html>
-`))
+	_, err = writer.Write([]byte("</DL><p>\n"))
 	if err != nil {
 		return fmt.Errorf("error writing HTML footer: %w", err)
 	}
