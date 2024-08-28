@@ -145,8 +145,36 @@ func main() {
         },
     }
 
+    var importCmd = &cobra.Command{
+        Use:   "import [filename]",
+        Short: "Import bookmarks from a file",
+        Args:  cobra.ExactArgs(1),
+        Run: func(cmd *cobra.Command, args []string) {
+            filename := args[0]
+            err := bookmarks.ImportBookmarks(filename)
+            if err != nil {
+                log.Fatalf("Error importing bookmarks: %v", err)
+            }
+            fmt.Println("Bookmarks imported successfully!")
+        },
+    }
+
+    var exportCmd = &cobra.Command{
+        Use:   "export [filename]",
+        Short: "Export bookmarks to a file",
+        Args:  cobra.ExactArgs(1),
+        Run: func(cmd *cobra.Command, args []string) {
+            filename := args[0]
+            err := bookmarks.ExportBookmarks(filename)
+            if err != nil {
+                log.Fatalf("Error exporting bookmarks: %v", err)
+            }
+            fmt.Println("Bookmarks exported successfully!")
+        },
+    }
+
     tagCmd.AddCommand(addTagCmd, removeTagCmd, listTagsCmd, searchTagsCmd)
-    rootCmd.AddCommand(addCmd, updateCmd, deleteCmd, searchCmd, tagCmd)
+    rootCmd.AddCommand(addCmd, updateCmd, deleteCmd, searchCmd, tagCmd, importCmd, exportCmd)
     if err := rootCmd.Execute(); err != nil {
         fmt.Println(err)
         os.Exit(1)

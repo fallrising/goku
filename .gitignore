@@ -9,6 +9,7 @@
 *.a
 *.so
 *.dll
+*.db
 
 # Ignore Go vendor directory
 /vendor/

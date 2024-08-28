@@ -2,26 +2,27 @@
 package bookmarks
 
 import (
+    "encoding/json"
     "fmt"
+    "io/ioutil"
     "time"
 
     "goku/internal/db"
 )
 
 type Bookmark struct {
-    ID          int
-    URL         string
-    Title       string
-    Description string
-    Tags        string
-    CreatedAt   time.Time
-    UpdatedAt   time.Time
+    ID          int       `json:"id"`
+    URL         string    `json:"url"`
+    Title       string    `json:"title"`
+    Description string    `json:"description"`
+    Tags        string    `json:"tags"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
 }
 
-
 type Tag struct {
-    ID   int
-    Name string
+    ID   int    `json:"id"`
+    Name string `json:"name"`
 }
 
 func AddTag(name string) error {
@@ -114,6 +115,67 @@ func SearchBookmarks(keyword string) ([]Bookmark, error) {
     rows, err := db.DB.Query(query, "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
     if err != nil {
         return nil, fmt.Errorf("failed to search bookmarks: %v", err)
+    }
+    defer rows.Close()
+
+    var bookmarks []Bookmark
+    for rows.Next() {
+        var bookmark Bookmark
+        err := rows.Scan(&bookmark.ID, &bookmark.URL, &bookmark.Title, &bookmark.Description, &bookmark.Tags, &bookmark.CreatedAt, &bookmark.UpdatedAt)
+        if err != nil {
+            return nil, fmt.Errorf("failed to scan bookmark: %v", err)
+        }
+        bookmarks = append(bookmarks, bookmark)
+    }
+    return bookmarks, nil
+}
+
+func ImportBookmarks(filename string) error {
+    data, err := ioutil.ReadFile(filename)
+    if err != nil {
+        return fmt.Errorf("failed to read file: %v", err)
+    }
+
+    var bookmarks []Bookmark
+    err = json.Unmarshal(data, &bookmarks)
+    if err != nil {
+        return fmt.Errorf("failed to unmarshal bookmarks: %v", err)
+    }
+
+    for _, bookmark := range bookmarks {
+        err := AddBookmark(bookmark.URL, bookmark.Title, bookmark.Description, bookmark.Tags)
+        if err != nil {
+            return fmt.Errorf("failed to add bookmark: %v", err)
+        }
+    }
+
+    return nil
+}
+
+func ExportBookmarks(filename string) error {
+    bookmarks, err := ListBookmarks()
+    if err != nil {
+        return fmt.Errorf("failed to list bookmarks: %v", err)
+    }
+
+    data, err := json.MarshalIndent(bookmarks, "", "  ")
+    if err != nil {
+        return fmt.Errorf("failed to marshal bookmarks: %v", err)
+    }
+
+    err = ioutil.WriteFile(filename, data, 0644)
+    if err != nil {
+        return fmt.Errorf("failed to write file: %v", err)
+    }
+
+    return nil
+}
+
+func ListBookmarks() ([]Bookmark, error) {
+    query := `SELECT id, url, title, description, tags, created_at, updated_at FROM bookmarks`
+    rows, err := db.DB.Query(query)
+    if err != nil {
+        return nil, fmt.Errorf("failed to list bookmarks: %v", err)
     }
     defer rows.Close()
 
