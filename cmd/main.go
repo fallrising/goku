@@ -7,9 +7,8 @@ import (
     "os"
     "strconv"
 
-    "goku-cli/internal/bookmarks"
-    "goku-cli/internal/db"
-
+    "goku/internal/db"
+    "goku/internal/bookmarks"
     "github.com/spf13/cobra"
 )
 

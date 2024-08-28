@@ -1,0 +1,24 @@
+# Ignore database files
+*.db
+
+# Ignore build artifacts
+/build/
+*.exe
+*.out
+*.o
+*.a
+*.so
+*.dll
+
+# Ignore Go vendor directory
+/vendor/
+
+# Ignore Go test binaries
+*.test
+
+# Ignore IDE/editor specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

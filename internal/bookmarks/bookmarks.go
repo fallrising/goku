@@ -5,7 +5,7 @@ import (
     "fmt"
     "time"
 
-    "goku-cli/internal/db"
+    "goku/internal/db"
 )
 
 type Bookmark struct {

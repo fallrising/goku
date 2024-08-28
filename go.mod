@@ -1,4 +1,4 @@
-module goku-cli
+module goku
 
 go 1.22.2
 
