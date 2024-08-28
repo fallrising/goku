@@ -31,8 +31,30 @@ func createTable() {
         "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP
     );`
 
+    createTagsTableSQL := `CREATE TABLE IF NOT EXISTS tags (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "name" TEXT NOT NULL UNIQUE
+    );`
+
+    createBookmarkTagsTableSQL := `CREATE TABLE IF NOT EXISTS bookmark_tags (
+        "bookmark_id" INTEGER NOT NULL,
+        "tag_id" INTEGER NOT NULL,
+        FOREIGN KEY (bookmark_id) REFERENCES bookmarks(id),
+        FOREIGN KEY (tag_id) REFERENCES tags(id)
+    );`
+
     _, err := DB.Exec(createBookmarksTableSQL)
     if err != nil {
         log.Fatalf("Failed to create bookmarks table: %v", err)
+    }
+
+    _, err = DB.Exec(createTagsTableSQL)
+    if err != nil {
+        log.Fatalf("Failed to create tags table: %v", err)
+    }
+
+    _, err = DB.Exec(createBookmarkTagsTableSQL)
+    if err != nil {
+        log.Fatalf("Failed to create bookmark_tags table: %v", err)
     }
 }

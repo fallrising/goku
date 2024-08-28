@@ -83,7 +83,71 @@ func main() {
         },
     }
 
-    rootCmd.AddCommand(addCmd, updateCmd, deleteCmd, searchCmd)
+    var tagCmd = &cobra.Command{
+        Use:   "tag",
+        Short: "Manage tags",
+    }
+
+    var addTagCmd = &cobra.Command{
+        Use:   "add [name]",
+        Short: "Add a new tag",
+        Args:  cobra.ExactArgs(1),
+        Run: func(cmd *cobra.Command, args []string) {
+            name := args[0]
+            err := bookmarks.AddTag(name)
+            if err != nil {
+                log.Fatalf("Error adding tag: %v", err)
+            }
+            fmt.Println("Tag added successfully!")
+        },
+    }
+
+    var removeTagCmd = &cobra.Command{
+        Use:   "remove [name]",
+        Short: "Remove a tag",
+        Args:  cobra.ExactArgs(1),
+        Run: func(cmd *cobra.Command, args []string) {
+            name := args[0]
+            err := bookmarks.RemoveTag(name)
+            if err != nil {
+                log.Fatalf("Error removing tag: %v", err)
+            }
+            fmt.Println("Tag removed successfully!")
+        },
+    }
+
+    var listTagsCmd = &cobra.Command{
+        Use:   "list",
+        Short: "List all tags",
+        Run: func(cmd *cobra.Command, args []string) {
+            tags, err := bookmarks.ListTags()
+            if err != nil {
+                log.Fatalf("Error listing tags: %v", err)
+            }
+            for _, tag := range tags {
+                fmt.Printf("ID: %d, Name: %s\n", tag.ID, tag.Name)
+            }
+        },
+    }
+
+    var searchTagsCmd = &cobra.Command{
+        Use:   "search [keyword]",
+        Short: "Search tags",
+        Args:  cobra.ExactArgs(1),
+        Run: func(cmd *cobra.Command, args []string) {
+            keyword := args[0]
+            tags, err := bookmarks.SearchTags(keyword)
+            if err != nil {
+                log.Fatalf("Error searching tags: %v", err)
+            }
+            for _, tag := range tags {
+                fmt.Printf("ID: %d, Name: %s\n", tag.ID, tag.Name)
+            }
+        },
+    }
+
+    tagCmd.AddCommand(addTagCmd, removeTagCmd, listTagsCmd, searchTagsCmd)
+    rootCmd.AddCommand(addCmd, updateCmd, deleteCmd, searchCmd, tagCmd)
     if err := rootCmd.Execute(); err != nil {
         fmt.Println(err)
         os.Exit(1)
