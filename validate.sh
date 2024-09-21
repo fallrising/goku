@@ -5,13 +5,13 @@ set -e
 # Create a temporary directory for the test database
 TEST_DB="./goku.db"
 
-#cleanup() {
-#    echo "Cleaning up..."
-#    rm -f "$TEST_DB"
-#}
-#
-## Set up trap to ensure cleanup happens even if the script fails
-#trap cleanup EXIT
+cleanup() {
+    echo "Cleaning up..."
+    rm -f "$TEST_DB"
+}
+
+# Set up trap to ensure cleanup happens even if the script fails
+trap cleanup EXIT
 
 # Build the Goku CLI using build.sh
 echo "Building Goku CLI..."
@@ -61,9 +61,9 @@ if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "Description:An updated example web
 fi
 
 echo "3.2 Testing partial update for URL"
-run_goku update --id "$BOOKMARK_ID" --url "https://updated1.com"
+run_goku update --id "$BOOKMARK_ID" --url "https://www.yahoo.com"
 PARTIAL_UPDATE_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
-if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "URL:https://updated1.com"; then
+if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "URL:https://www.yahoo.com"; then
     echo "Error: Partial update of URL failed"
     exit 1
 fi
@@ -89,18 +89,18 @@ echo "6. Testing search functionality"
 
 # Search by title
 echo "6.1 Searching by title"
-SEARCH_OUTPUT=$(run_goku search --query "Updated Example")
+SEARCH_OUTPUT=$(run_goku search --query "Virgo")
 echo "$SEARCH_OUTPUT"
-if ! echo "$SEARCH_OUTPUT" | grep -q "Updated Example Site"; then
+if ! echo "$SEARCH_OUTPUT" | grep -q "updated test"; then
     echo "Error: Search by title failed"
     exit 1
 fi
 
 # Search by URL
 echo "6.2 Searching by URL"
-SEARCH_OUTPUT=$(run_goku search --query "updated1.com")
+SEARCH_OUTPUT=$(run_goku search --query "yahoo.com")
 echo "$SEARCH_OUTPUT"
-if ! echo "$SEARCH_OUTPUT" | grep -q "https://updated1.com"; then
+if ! echo "$SEARCH_OUTPUT" | grep -q "https://www.yahoo.com"; then
     echo "Error: Search by URL failed"
     echo "$SEARCH_OUTPUT"
     exit 1
@@ -108,9 +108,9 @@ fi
 
 # Search by description
 echo "6.3 Searching by description"
-SEARCH_OUTPUT=$(run_goku search --query "updated example")
+SEARCH_OUTPUT=$(run_goku search --query "Latest news")
 echo "$SEARCH_OUTPUT"
-if ! echo "$SEARCH_OUTPUT" | grep -q "updated example"; then
+if ! echo "$SEARCH_OUTPUT" | grep -q "Latest news"; then
     echo "Error: Search by description failed"
     exit 1
 fi

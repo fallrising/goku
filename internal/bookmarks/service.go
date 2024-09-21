@@ -77,9 +77,27 @@ func (s *BookmarkService) UpdateBookmark(ctx context.Context, updatedBookmark *m
 		return fmt.Errorf("bookmark not found with ID: %d", updatedBookmark.ID)
 	}
 
-	// Check if the new URL is already in use by another bookmark
-	if duplicateBookmark, err := s.repo.GetByURL(ctx, updatedBookmark.URL); err == nil && duplicateBookmark != nil && duplicateBookmark.ID != updatedBookmark.ID {
-		return fmt.Errorf("another bookmark with this URL already exists: %s", updatedBookmark.URL)
+	// Check if the URL has changed
+	if updatedBookmark.URL != "" && updatedBookmark.URL != existingBookmark.URL {
+		// Check for duplicates
+		duplicate, err := s.repo.GetByURL(ctx, updatedBookmark.URL)
+		if err != nil {
+			return fmt.Errorf("failed to check for duplicate URL: %w", err)
+		}
+		if duplicate != nil {
+			return fmt.Errorf("another bookmark with URL '%s' already exists", updatedBookmark.URL)
+		}
+
+		// Fetch new metadata for the new URL
+		content, err := fetcher.FetchPageContent(updatedBookmark.URL)
+		if err != nil {
+			return fmt.Errorf("failed to fetch metadata for the updated URL: %w", err)
+		}
+
+		// Update the metadata with fetched content
+		updatedBookmark.Title = content.Title
+		updatedBookmark.Description = content.Description
+		updatedBookmark.Tags = content.Tags
 	}
 
 	// Track changes
