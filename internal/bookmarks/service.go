@@ -23,6 +23,15 @@ func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.B
 		return fmt.Errorf("URL is required")
 	}
 
+	// Check if URL already exists in the database
+	existingBookmark, err := s.repo.GetByURL(ctx, bookmark.URL)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing bookmark: %w", err)
+	}
+	if existingBookmark != nil {
+		return fmt.Errorf("bookmark with this URL already exists: %s", existingBookmark.URL)
+	}
+
 	// Check if URL starts with "http://" or "https://"
 	if !(strings.HasPrefix(bookmark.URL, "http://") || strings.HasPrefix(bookmark.URL, "https://")) {
 		bookmark.URL = "https://" + bookmark.URL
@@ -63,6 +72,14 @@ func (s *BookmarkService) UpdateBookmark(ctx context.Context, updatedBookmark *m
 	existingBookmark, err := s.repo.GetByID(ctx, updatedBookmark.ID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch existing bookmark: %w", err)
+	}
+	if existingBookmark == nil {
+		return fmt.Errorf("bookmark not found with ID: %d", updatedBookmark.ID)
+	}
+
+	// Check if the new URL is already in use by another bookmark
+	if duplicateBookmark, err := s.repo.GetByURL(ctx, updatedBookmark.URL); err == nil && duplicateBookmark != nil && duplicateBookmark.ID != updatedBookmark.ID {
+		return fmt.Errorf("another bookmark with this URL already exists: %s", updatedBookmark.URL)
 	}
 
 	// Track changes

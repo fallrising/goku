@@ -9,6 +9,7 @@ import (
 type BookmarkRepository interface {
 	Create(ctx context.Context, bookmark *models.Bookmark) error
 	GetByID(ctx context.Context, id int64) (*models.Bookmark, error)
+	GetByURL(ctx context.Context, url string) (*models.Bookmark, error) // New method
 	Update(ctx context.Context, bookmark *models.Bookmark) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, limit, offset int) ([]*models.Bookmark, error)

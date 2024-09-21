@@ -85,6 +85,29 @@ func (d *Database) GetByID(ctx context.Context, id int64) (*models.Bookmark, err
 	return &bookmark, nil
 }
 
+// GetByURL retrieves a bookmark by its URL
+func (d *Database) GetByURL(ctx context.Context, url string) (*models.Bookmark, error) {
+	query := `SELECT id, url, title, description, tags, created_at, updated_at FROM bookmarks WHERE url = ?`
+
+	var bookmark models.Bookmark
+	var tags string
+
+	err := d.db.QueryRowContext(ctx, query, url).Scan(
+		&bookmark.ID, &bookmark.URL, &bookmark.Title, &bookmark.Description,
+		&tags, &bookmark.CreatedAt, &bookmark.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No bookmark found with the given URL
+		}
+		return nil, fmt.Errorf("failed to get bookmark by URL: %w", err)
+	}
+
+	// Split the tags string into a slice
+	bookmark.Tags = strings.Split(tags, ",")
+	return &bookmark, nil
+}
+
 func (d *Database) Update(ctx context.Context, bookmark *models.Bookmark) error {
 	query := `UPDATE bookmarks SET url = ?, title = ?, description = ?, tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	tags := strings.Join(bookmark.Tags, ",")
