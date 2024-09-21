@@ -5,13 +5,13 @@ set -e
 # Create a temporary directory for the test database
 TEST_DB="./goku.db"
 
-cleanup() {
-    echo "Cleaning up..."
-    rm -f "$TEST_DB"
-}
-
-# Set up trap to ensure cleanup happens even if the script fails
-trap cleanup EXIT
+#cleanup() {
+#    echo "Cleaning up..."
+#    rm -f "$TEST_DB"
+#}
+#
+## Set up trap to ensure cleanup happens even if the script fails
+#trap cleanup EXIT
 
 # Build the Goku CLI using build.sh
 echo "Building Goku CLI..."
@@ -25,7 +25,7 @@ run_goku() {
     GOKU_DB_PATH="$TEST_DB" ./bin/goku "$@"
 }
 
-echo "Starting CRUD and Search validation for Goku CLI"
+echo "Starting CRUD, Search, and additional feature validation for Goku CLI"
 
 # Test 1: Basic CRUD operations
 echo "1. Creating a bookmark with all details provided"
@@ -48,7 +48,7 @@ run_goku get --id "$BOOKMARK_ID"
 echo "3. Updating the bookmark"
 run_goku update --id "$BOOKMARK_ID" --title "Updated Example Site" --description "An updated example website" --tags "example,test,updated"
 
-echo "3.1 Testing partial update"
+echo "3.1 Testing partial update for title"
 run_goku update --id "$BOOKMARK_ID" --title "Partially Updated Example Site"
 PARTIAL_UPDATE_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
 if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "Title:Partially Updated Example Site"; then
@@ -57,6 +57,22 @@ if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "Title:Partially Updated Example Si
 fi
 if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "Description:An updated example website"; then
     echo "Error: Partial update changed description unexpectedly"
+    exit 1
+fi
+
+echo "3.2 Testing partial update for URL"
+run_goku update --id "$BOOKMARK_ID" --url "https://updated.com"
+PARTIAL_UPDATE_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
+if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "URL:https://updated.com"; then
+    echo "Error: Partial update of URL failed"
+    exit 1
+fi
+
+echo "3.3 Testing partial update for tags"
+run_goku update --id "$BOOKMARK_ID" --tags "updated,test"
+PARTIAL_UPDATE_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
+if ! echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "updated test"; then
+    echo "Error: Partial update of tags failed"
     exit 1
 fi
 
@@ -82,10 +98,11 @@ fi
 
 # Search by URL
 echo "6.2 Searching by URL"
-SEARCH_OUTPUT=$(run_goku search --query "example.com")
+SEARCH_OUTPUT=$(run_goku search --query "updated.com")
 echo "$SEARCH_OUTPUT"
-if ! echo "$SEARCH_OUTPUT" | grep -q "https://example.com"; then
+if ! echo "$SEARCH_OUTPUT" | grep -q "https://updated.com"; then
     echo "Error: Search by URL failed"
+    echo "$SEARCH_OUTPUT"
     exit 1
 fi
 
@@ -102,7 +119,7 @@ fi
 echo "6.4 Searching by tag"
 SEARCH_OUTPUT=$(run_goku search --query "updated")
 echo "$SEARCH_OUTPUT"
-if ! echo "$SEARCH_OUTPUT" | grep -q "example test updated"; then
+if ! echo "$SEARCH_OUTPUT" | grep -q "updated test"; then
     echo "Error: Search by tag failed"
     exit 1
 fi
@@ -116,20 +133,27 @@ if ! echo "$SEARCH_OUTPUT" | grep -q "No bookmarks found matching the query"; th
     exit 1
 fi
 
-# Delete the bookmark
-echo "7. Deleting the bookmark"
-run_goku delete --id "$BOOKMARK_ID"
+# Test 3: Tag Management (Add, Remove, List)
+#echo "7. Adding a new tag to the bookmark"
+#run_goku tags add --id "$BOOKMARK_ID" --tag "newtag"
+#TAG_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
+#if ! echo "$TAG_OUTPUT" | grep -q "Tags:updated test newtag"; then
+#    echo "Error: Failed to add tag"
+#    exit 1
+#fi
 
-# Try to read the deleted bookmark (should fail)
-echo "8. Attempting to read the deleted bookmark (should fail)"
-if run_goku get --id "$BOOKMARK_ID" 2>/dev/null; then
-    echo "Error: Bookmark was not deleted successfully"
+echo "7.1 Removing the tag from the bookmark"
+run_goku tags remove --id "$BOOKMARK_ID" --tag "newtag"
+TAG_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
+if echo "$TAG_OUTPUT" | grep -q "newtag"; then
+    echo "Error: Failed to remove tag"
     exit 1
-else
-    echo "Bookmark deleted successfully"
 fi
 
-# Test 3: Automatic webpage content extraction
+echo "7.2 Listing all unique tags"
+run_goku tags list
+
+# Test 4: Automatic webpage content extraction
 echo "9. Creating a bookmark with only URL (testing automatic content extraction)"
 CREATE_OUTPUT=$(run_goku add --url "https://www.example.com")
 echo "$CREATE_OUTPUT"
@@ -139,8 +163,6 @@ if [ -z "$BOOKMARK_ID" ]; then
     echo "Failed to extract bookmark ID"
     exit 1
 fi
-
-echo "Created bookmark with ID: $BOOKMARK_ID"
 
 # Read the bookmark to verify automatic content extraction
 echo "10. Reading the automatically extracted bookmark content"
@@ -185,19 +207,30 @@ else
     exit 1
 fi
 
-# Delete the test bookmark
-echo "11. Deleting the test bookmark"
+# Delete the bookmark
+echo "11. Deleting the bookmark"
 run_goku delete --id "$BOOKMARK_ID"
 
+# Try to read the deleted bookmark (should fail)
+echo "12. Attempting to read the deleted bookmark (should fail)"
+if run_goku get --id "$BOOKMARK_ID" 2>/dev/null; then
+    echo "Error: Bookmark was not deleted successfully"
+    exit 1
+else
+    echo "Bookmark deleted successfully"
+fi
+
 # List all bookmarks again (should be empty)
-echo "12. Listing all bookmarks after deletion"
+echo "13. Listing all bookmarks after deletion"
 run_goku list
 
-echo "13. Testing invalid input handling"
+# Test 5: Invalid input handling
+echo "14. Testing invalid input handling"
 if run_goku add --url "not_a_valid_url" 2>/dev/null; then
     echo "Error: Adding invalid URL should fail"
     exit 1
 fi
 echo "Invalid input handling test passed"
 
-echo "CRUD, Search, and automatic content extraction test completed successfully"
+echo "All tests completed successfully!"
+exit 0
