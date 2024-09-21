@@ -17,24 +17,25 @@ type PageContent struct {
 	Title       string
 	Description string
 	Tags        []string
+	FetchError  string // New field to store fetch error message
 }
 
 func FetchPageContent(pageURL string) (*PageContent, error) {
 	// Validate URL structure
 	parsedURL, err := url.ParseRequestURI(pageURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid URL format: %w", err)
+		return &PageContent{FetchError: fmt.Sprintf("Invalid URL format: %v", err)}, nil
 	}
 
 	// Check if the URL has a valid host
 	if parsedURL.Host == "" {
-		return nil, fmt.Errorf("URL must have a valid host")
+		return &PageContent{FetchError: "URL must have a valid host"}, nil
 	}
 
 	// Optionally, check if the hostname can be resolved (basic DNS check)
 	_, err = net.LookupHost(parsedURL.Host)
 	if err != nil {
-		return nil, fmt.Errorf("cannot resolve host: %w", err)
+		return &PageContent{FetchError: fmt.Sprintf("Cannot resolve host: %v", err)}, nil
 	}
 
 	client := &http.Client{
@@ -43,17 +44,17 @@ func FetchPageContent(pageURL string) (*PageContent, error) {
 
 	resp, err := client.Get(pageURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch URL: %w", err)
+		return &PageContent{FetchError: fmt.Sprintf("Failed to fetch URL: %v", err)}, nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return &PageContent{FetchError: fmt.Sprintf("HTTP code: %d, cannot get metadata", resp.StatusCode)}, nil
 	}
 
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTML: %w", err)
+		return &PageContent{FetchError: fmt.Sprintf("Failed to parse HTML: %v", err)}, nil
 	}
 
 	content := &PageContent{

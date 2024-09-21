@@ -4,10 +4,15 @@ import (
 	"context"
 	"fmt"
 	"github.com/fallrising/goku-cli/internal/fetcher"
-	"strings"
-
 	"github.com/fallrising/goku-cli/pkg/interfaces"
+	"golang.org/x/net/html"
+	"io"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/fallrising/goku-cli/pkg/models"
+	"github.com/schollz/progressbar/v3"
 )
 
 type BookmarkService struct {
@@ -41,8 +46,12 @@ func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.B
 	if bookmark.Title == "" || bookmark.Description == "" || len(bookmark.Tags) == 0 {
 		content, err := fetcher.FetchPageContent(bookmark.URL)
 		if err != nil {
-			fmt.Printf("Warning: Failed to fetch page content: %v\n", err)
-			return err
+			return fmt.Errorf("failed to fetch page content: %w", err)
+		}
+
+		if content.FetchError != "" {
+			fmt.Printf("Warning: %s\n", content.FetchError)
+			bookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
 		} else {
 			if bookmark.Title == "" {
 				bookmark.Title = content.Title
@@ -94,10 +103,15 @@ func (s *BookmarkService) UpdateBookmark(ctx context.Context, updatedBookmark *m
 			return fmt.Errorf("failed to fetch metadata for the updated URL: %w", err)
 		}
 
-		// Update the metadata with fetched content
-		updatedBookmark.Title = content.Title
-		updatedBookmark.Description = content.Description
-		updatedBookmark.Tags = content.Tags
+		if content.FetchError != "" {
+			fmt.Printf("Warning: %s\n", content.FetchError)
+			updatedBookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
+		} else {
+			// Update the metadata with fetched content
+			updatedBookmark.Title = content.Title
+			updatedBookmark.Description = content.Description
+			updatedBookmark.Tags = content.Tags
+		}
 	}
 
 	// Track changes
@@ -148,6 +162,169 @@ func (s *BookmarkService) DeleteBookmark(ctx context.Context, id int64) error {
 
 func (s *BookmarkService) ListBookmarks(ctx context.Context, limit, offset int) ([]*models.Bookmark, error) {
 	return s.repo.List(ctx, limit, offset)
+}
+
+func (s *BookmarkService) ExportToHTML(ctx context.Context) (string, error) {
+	bookmarks, err := s.ListBookmarks(ctx, 0, 0) // Get all bookmarks
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch bookmarks: %w", err)
+	}
+
+	bar := progressbar.Default(int64(len(bookmarks)))
+
+	var sb strings.Builder
+
+	// Write HTML header
+	sb.WriteString("<!DOCTYPE NETSCAPE-Bookmark-file-1>\n")
+	sb.WriteString("<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">\n")
+	sb.WriteString("<TITLE>Bookmarks</TITLE>\n")
+	sb.WriteString("<H1>Bookmarks</H1>\n")
+	sb.WriteString("<DL><p>\n")
+
+	// Write bookmarks
+	for _, bookmark := range bookmarks {
+		sb.WriteString(fmt.Sprintf("    <DT><A HREF=\"%s\" ADD_DATE=\"%d\">%s</A>\n",
+			bookmark.URL,
+			bookmark.CreatedAt.Unix(),
+			bookmark.Title))
+
+		if bookmark.Description != "" {
+			sb.WriteString(fmt.Sprintf("    <DD>%s\n", bookmark.Description))
+		}
+		bar.Add(1)
+	}
+
+	// Close HTML
+	sb.WriteString("</DL><p>")
+
+	return sb.String(), nil
+}
+
+func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int, error) {
+	content, err := io.ReadAll(r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read HTML content: %w", err)
+	}
+
+	doc, err := html.Parse(strings.NewReader(string(content)))
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse HTML: %w", err)
+	}
+
+	bookmarkCount := countBookmarks(doc)
+	bar := progressbar.NewOptions(bookmarkCount,
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetWidth(15),
+		progressbar.OptionSetDescription("[cyan][1/3][reset] Importing bookmarks..."),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
+
+	recordsCreated := 0
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			var url, title string
+			var addDate int64
+
+			for _, attr := range n.Attr {
+				switch attr.Key {
+				case "href":
+					url = attr.Val
+				case "add_date":
+					addDate, _ = parseAddDate(attr.Val)
+				}
+			}
+
+			if n.FirstChild != nil {
+				title = n.FirstChild.Data
+			}
+
+			if url != "" {
+				// Update progress bar description with current URL
+				bar.Describe(fmt.Sprintf("[cyan][1/3][reset] Processing: %s", truncateURL(url, 40)))
+
+				bookmark := &models.Bookmark{
+					URL:   url,
+					Title: title,
+				}
+
+				if addDate != 0 {
+					bookmark.CreatedAt = time.Unix(addDate, 0)
+				}
+
+				err := s.CreateBookmark(ctx, bookmark)
+				if err != nil {
+					fmt.Printf("\nFailed to import bookmark %s: %v\n", url, err)
+				} else {
+					recordsCreated++
+				}
+				bar.Add(1)
+			}
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			traverse(c)
+		}
+	}
+
+	traverse(doc)
+	fmt.Println() // Add a newline after the progress bar
+	return recordsCreated, nil
+}
+
+// truncateURL shortens the URL if it's longer than maxLength
+func truncateURL(url string, maxLength int) string {
+	if len(url) <= maxLength {
+		return url
+	}
+	return url[:maxLength-3] + "..."
+}
+
+// countBookmarks traverses the HTML structure and counts the number of <a> tags,
+// which represent bookmarks in the HTML bookmark file format.
+func countBookmarks(n *html.Node) int {
+	count := 0
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			count++
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			traverse(c)
+		}
+	}
+	traverse(n)
+	return count
+}
+
+func parseAddDate(date string) (int64, error) {
+	// First, try parsing as Unix timestamp
+	i, err := parseInt64(date)
+	if err == nil {
+		return i, nil
+	}
+
+	// If that fails, try parsing as RFC3339 format
+	t, err := time.Parse(time.RFC3339, date)
+	if err == nil {
+		return t.Unix(), nil
+	}
+
+	// If all parsing attempts fail, return 0 (which will use current time)
+	return 0, fmt.Errorf("unable to parse date: %s", date)
+}
+
+func parseInt64(s string) (int64, error) {
+	if s == "" {
+		return 0, fmt.Errorf("empty string")
+	}
+	return strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 }
 
 func (s *BookmarkService) SearchBookmarks(ctx context.Context, query string, limit, offset int) ([]*models.Bookmark, error) {
