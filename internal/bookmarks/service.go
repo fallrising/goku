@@ -225,56 +225,90 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 			BarEnd:        "]",
 		}))
 
-	recordsCreated := 0
-	var traverse func(*html.Node)
-	traverse = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			var url, title string
-			var addDate int64
+	bookmarkChan := make(chan *models.Bookmark, 100)
+	errChan := make(chan error, 100)
+	doneChan := make(chan struct{})
 
-			for _, attr := range n.Attr {
-				switch attr.Key {
-				case "href":
-					url = attr.Val
-				case "add_date":
-					addDate, _ = parseAddDate(attr.Val)
-				}
-			}
-
-			if n.FirstChild != nil {
-				title = n.FirstChild.Data
-			}
-
-			if url != "" {
-				// Update progress bar description with current URL
-				bar.Describe(fmt.Sprintf("[cyan][1/3][reset] Processing: %s", truncateURL(url, 40)))
-
-				bookmark := &models.Bookmark{
-					URL:   url,
-					Title: title,
-				}
-
-				if addDate != 0 {
-					bookmark.CreatedAt = time.Unix(addDate, 0)
-				}
-
+	// Start worker goroutines
+	const numWorkers = 10
+	for i := 0; i < numWorkers; i++ {
+		go func() {
+			for bookmark := range bookmarkChan {
 				err := s.CreateBookmark(ctx, bookmark)
 				if err != nil {
-					fmt.Printf("\nFailed to import bookmark %s: %v\n", url, err)
+					errChan <- fmt.Errorf("failed to import bookmark %s: %w", bookmark.URL, err)
 				} else {
-					recordsCreated++
+					bar.Add(1)
 				}
-				bar.Add(1)
+			}
+		}()
+	}
+
+	// Start a goroutine to close channels when traversal is done
+	go func() {
+		var traverse func(*html.Node)
+		traverse = func(n *html.Node) {
+			if n.Type == html.ElementNode && n.Data == "a" {
+				var url, title string
+				var addDate int64
+
+				for _, attr := range n.Attr {
+					switch attr.Key {
+					case "href":
+						url = attr.Val
+					case "add_date":
+						addDate, _ = parseAddDate(attr.Val)
+					}
+				}
+
+				if n.FirstChild != nil {
+					title = n.FirstChild.Data
+				}
+
+				if url != "" {
+					bookmark := &models.Bookmark{
+						URL:   url,
+						Title: title,
+					}
+
+					if addDate != 0 {
+						bookmark.CreatedAt = time.Unix(addDate, 0)
+					}
+
+					bookmarkChan <- bookmark
+				}
+			}
+
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				traverse(c)
 			}
 		}
 
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			traverse(c)
+		traverse(doc)
+		close(bookmarkChan)
+		close(doneChan)
+	}()
+
+	// Handle results and errors
+	recordsCreated := 0
+	errors := []error{}
+loop:
+	for {
+		select {
+		case err := <-errChan:
+			errors = append(errors, err)
+		case <-doneChan:
+			break loop
 		}
 	}
 
-	traverse(doc)
+	recordsCreated = bar.GetMax() - len(errors)
 	fmt.Println() // Add a newline after the progress bar
+
+	if len(errors) > 0 {
+		return recordsCreated, fmt.Errorf("encountered %d errors during import", len(errors))
+	}
+
 	return recordsCreated, nil
 }
 
