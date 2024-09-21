@@ -12,4 +12,5 @@ type BookmarkRepository interface {
 	Update(ctx context.Context, bookmark *models.Bookmark) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context) ([]*models.Bookmark, error)
+	Search(ctx context.Context, query string) ([]*models.Bookmark, error)
 }

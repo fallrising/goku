@@ -4,7 +4,9 @@ package fetcher
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,12 +19,29 @@ type PageContent struct {
 	Tags        []string
 }
 
-func FetchPageContent(url string) (*PageContent, error) {
+func FetchPageContent(pageURL string) (*PageContent, error) {
+	// Validate URL structure
+	parsedURL, err := url.ParseRequestURI(pageURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL format: %w", err)
+	}
+
+	// Check if the URL has a valid host
+	if parsedURL.Host == "" {
+		return nil, fmt.Errorf("URL must have a valid host")
+	}
+
+	// Optionally, check if the hostname can be resolved (basic DNS check)
+	_, err = net.LookupHost(parsedURL.Host)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve host: %w", err)
+	}
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
-	resp, err := client.Get(url)
+	resp, err := client.Get(pageURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch URL: %w", err)
 	}

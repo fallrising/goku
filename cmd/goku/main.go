@@ -130,7 +130,30 @@ func main() {
 						return fmt.Errorf("failed to list bookmarks: %w", err)
 					}
 					for _, b := range bookmarks {
-						fmt.Printf("ID: %d, URL: %s, Title: %s, Tags: %v\n", b.ID, b.URL, b.Title, b.Tags)
+						fmt.Printf("ID: %d, URL: %s, Title: %s, Tags: %v, Description: %v\n", b.ID, b.URL, b.Title, b.Tags, b.Description)
+					}
+					return nil
+				},
+			},
+			{
+				Name:  "search",
+				Usage: "Search bookmarks",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "query", Aliases: []string{"q"}, Required: true},
+				},
+				Action: func(c *cli.Context) error {
+					query := c.String("query")
+					bookmarks, err := bookmarkService.SearchBookmarks(context.Background(), query)
+					if err != nil {
+						return fmt.Errorf("failed to search bookmarks: %w", err)
+					}
+					if len(bookmarks) == 0 {
+						fmt.Println("No bookmarks found matching the query.")
+						return nil
+					}
+					fmt.Printf("Found %d bookmark(s):\n", len(bookmarks))
+					for _, b := range bookmarks {
+						fmt.Printf("ID: %d, URL: %s, Title: %s, Tags: %v, Description: %v\n", b.ID, b.URL, b.Title, b.Tags, b.Description)
 					}
 					return nil
 				},
