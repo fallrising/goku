@@ -15,4 +15,12 @@ type BookmarkRepository interface {
 	List(ctx context.Context, limit, offset int) ([]*models.Bookmark, error)
 	Search(ctx context.Context, query string, limit, offset int) ([]*models.Bookmark, error)
 	ListAllTags(ctx context.Context) ([]string, error)
+	// New methods for statistics
+	CountByHostname(ctx context.Context) (map[string]int, error)
+	CountByTag(ctx context.Context) (map[string]int, error)
+	GetLatest(ctx context.Context, limit int) ([]*models.Bookmark, error)
+	CountAccessibility(ctx context.Context) (map[string]int, error)
+	TopHostnames(ctx context.Context, limit int) ([]models.HostnameCount, error)
+	ListUniqueHostnames(ctx context.Context) ([]string, error)
+	CountCreatedLastNDays(ctx context.Context, days int) (map[string]int, error)
 }
