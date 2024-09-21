@@ -228,3 +228,14 @@ func (d *Database) ListAllTags(ctx context.Context) ([]string, error) {
 
 	return uniqueTags, nil
 }
+
+func (d *Database) PurgeAllData(ctx context.Context) error {
+	query := `DELETE FROM bookmarks`
+
+	_, err := d.db.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to delete all data: %w", err)
+	}
+
+	return nil
+}

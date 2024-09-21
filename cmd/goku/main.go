@@ -66,6 +66,18 @@ func main() {
 				},
 			},
 			{
+				Name:  "purge",
+				Usage: "Purge all bookmark data",
+				Action: func(c *cli.Context) error {
+					err := db.PurgeAllData(context.Background())
+					if err != nil {
+						return fmt.Errorf("failed to purge all data: %w", err)
+					}
+					fmt.Println("All bookmark data has been purged.")
+					return nil
+				},
+			},
+			{
 				Name:  "get",
 				Usage: "Get a bookmark by ID",
 				Flags: []cli.Flag{

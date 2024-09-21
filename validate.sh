@@ -5,13 +5,13 @@ set -e
 # Create a temporary directory for the test database
 TEST_DB="./goku.db"
 
-cleanup() {
-    echo "Cleaning up..."
-    rm -f "$TEST_DB"
-}
-
-# Set up trap to ensure cleanup happens even if the script fails
-trap cleanup EXIT
+#cleanup() {
+#    echo "Cleaning up..."
+#    rm -f "$TEST_DB"
+#}
+#
+## Set up trap to ensure cleanup happens even if the script fails
+#trap cleanup EXIT
 
 # Build the Goku CLI using build.sh
 echo "Building Goku CLI..."
@@ -231,6 +231,18 @@ if run_goku add --url "not_a_valid_url" 2>/dev/null; then
     exit 1
 fi
 echo "Invalid input handling test passed"
+
+echo "15. Testing purge functionality"
+run_goku purge
+
+# Check if the database is empty
+BOOKMARK_CONTENT=$(run_goku list)
+if echo "$BOOKMARK_CONTENT" | grep -q "No listBookmarks found"; then
+  echo "Purge test passed"
+else
+  echo "Error: Purge command failed to remove all bookmarks"
+  exit 1
+fi
 
 echo "All tests completed successfully!"
 exit 0
