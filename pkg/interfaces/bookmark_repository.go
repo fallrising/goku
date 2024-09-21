@@ -13,4 +13,5 @@ type BookmarkRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, limit, offset int) ([]*models.Bookmark, error)
 	Search(ctx context.Context, query string, limit, offset int) ([]*models.Bookmark, error)
+	ListAllTags(ctx context.Context) ([]string, error)
 }

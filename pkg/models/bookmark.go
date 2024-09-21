@@ -28,9 +28,11 @@ func (b *Bookmark) AddTag(tag string) {
 	}
 	b.Tags = append(b.Tags, tag)
 }
+
 func (b *Bookmark) RemoveTag(tag string) {
 	for i, t := range b.Tags {
 		if t == tag {
+			// Remove the tag from the list
 			b.Tags = append(b.Tags[:i], b.Tags[i+1:]...)
 			return
 		}

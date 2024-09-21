@@ -123,13 +123,25 @@ func main() {
 			},
 			{
 				Name:  "list",
-				Usage: "List all bookmarks",
+				Usage: "List all bookmarks with pagination",
+				Flags: []cli.Flag{
+					&cli.IntFlag{Name: "limit", Value: 10, Usage: "Number of bookmarks to display per page"},
+					&cli.IntFlag{Name: "offset", Value: 0, Usage: "Offset to start listing bookmarks from"},
+				},
 				Action: func(c *cli.Context) error {
-					bookmarks, err := bookmarkService.ListBookmarks(context.Background())
+					limit := c.Int("limit")
+					offset := c.Int("offset")
+
+					listBookmarks, err := bookmarkService.ListBookmarks(context.Background(), limit, offset)
 					if err != nil {
-						return fmt.Errorf("failed to list bookmarks: %w", err)
+						return fmt.Errorf("failed to list listBookmarks: %w", err)
 					}
-					for _, b := range bookmarks {
+					if len(listBookmarks) == 0 {
+						fmt.Println("No listBookmarks found.")
+						return nil
+					}
+					fmt.Printf("Displaying %d bookmark(s):\n", len(listBookmarks))
+					for _, b := range listBookmarks {
 						fmt.Printf("ID: %d, URL: %s, Title: %s, Tags: %v, Description: %v\n", b.ID, b.URL, b.Title, b.Tags, b.Description)
 					}
 					return nil
@@ -137,25 +149,73 @@ func main() {
 			},
 			{
 				Name:  "search",
-				Usage: "Search bookmarks",
+				Usage: "Search bookmarks with pagination",
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "query", Aliases: []string{"q"}, Required: true},
+					&cli.StringFlag{Name: "query", Aliases: []string{"q"}, Required: true, Usage: "Search query"},
+					&cli.IntFlag{Name: "limit", Value: 10, Usage: "Number of bookmarks to display per page"},
+					&cli.IntFlag{Name: "offset", Value: 0, Usage: "Offset to start search results from"},
 				},
 				Action: func(c *cli.Context) error {
 					query := c.String("query")
-					bookmarks, err := bookmarkService.SearchBookmarks(context.Background(), query)
+					limit := c.Int("limit")
+					offset := c.Int("offset")
+
+					searchBookmarks, err := bookmarkService.SearchBookmarks(context.Background(), query, limit, offset)
 					if err != nil {
-						return fmt.Errorf("failed to search bookmarks: %w", err)
+						return fmt.Errorf("failed to search searchBookmarks: %w", err)
 					}
-					if len(bookmarks) == 0 {
-						fmt.Println("No bookmarks found matching the query.")
+					if len(searchBookmarks) == 0 {
+						fmt.Println("No searchBookmarks found matching the query.")
 						return nil
 					}
-					fmt.Printf("Found %d bookmark(s):\n", len(bookmarks))
-					for _, b := range bookmarks {
+					fmt.Printf("Found %d bookmark(s):\n", len(searchBookmarks))
+					for _, b := range searchBookmarks {
 						fmt.Printf("ID: %d, URL: %s, Title: %s, Tags: %v, Description: %v\n", b.ID, b.URL, b.Title, b.Tags, b.Description)
 					}
 					return nil
+				},
+			},
+			{
+				Name:  "tags",
+				Usage: "Manage tags for bookmarks",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "remove",
+						Usage: "Remove a tag from a bookmark",
+						Flags: []cli.Flag{
+							&cli.Int64Flag{Name: "id", Required: true, Usage: "Bookmark ID"},
+							&cli.StringFlag{Name: "tag", Required: true, Usage: "Tag to remove"},
+						},
+						Action: func(c *cli.Context) error {
+							bookmarkID := c.Int64("id")
+							tag := c.String("tag")
+							err := bookmarkService.RemoveTagFromBookmark(context.Background(), bookmarkID, tag)
+							if err != nil {
+								return fmt.Errorf("failed to remove tag: %w", err)
+							}
+							fmt.Println("Tag removed successfully")
+							return nil
+						},
+					},
+					{
+						Name:  "list",
+						Usage: "List all unique tags",
+						Action: func(c *cli.Context) error {
+							tags, err := bookmarkService.ListAllTags(context.Background())
+							if err != nil {
+								return fmt.Errorf("failed to list tags: %w", err)
+							}
+							if len(tags) == 0 {
+								fmt.Println("No tags found.")
+								return nil
+							}
+							fmt.Println("Tags:")
+							for _, tag := range tags {
+								fmt.Println(" -", tag)
+							}
+							return nil
+						},
+					},
 				},
 			},
 		},
