@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 )
 
@@ -15,14 +16,18 @@ type Bookmark struct {
 }
 
 func (b *Bookmark) AddTag(tag string) {
+	tag = strings.TrimSpace(strings.ToLower(tag))
+	if tag == "" {
+		return
+	}
+
 	for _, t := range b.Tags {
 		if t == tag {
-			return
+			return // Tag already exists
 		}
 	}
 	b.Tags = append(b.Tags, tag)
 }
-
 func (b *Bookmark) RemoveTag(tag string) {
 	for i, t := range b.Tags {
 		if t == tag {

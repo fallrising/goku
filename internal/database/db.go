@@ -108,21 +108,18 @@ func (d *Database) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (d *Database) List(ctx context.Context) ([]*models.Bookmark, error) {
-	query := `SELECT id, url, title, description, tags, created_at, updated_at FROM bookmarks`
-
-	rows, err := d.db.QueryContext(ctx, query)
+func (d *Database) List(ctx context.Context, limit, offset int) ([]*models.Bookmark, error) {
+	query := `SELECT id, url, title, description, tags, created_at, updated_at FROM bookmarks LIMIT ? OFFSET ?`
+	rows, err := d.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query bookmarks: %w", err)
 	}
 	defer rows.Close()
 
 	var bookmarks []*models.Bookmark
-
 	for rows.Next() {
 		var bookmark models.Bookmark
 		var tags string
-
 		err := rows.Scan(
 			&bookmark.ID, &bookmark.URL, &bookmark.Title, &bookmark.Description,
 			&tags, &bookmark.CreatedAt, &bookmark.UpdatedAt,
@@ -130,7 +127,6 @@ func (d *Database) List(ctx context.Context) ([]*models.Bookmark, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan bookmark row: %w", err)
 		}
-
 		bookmark.Tags = strings.Split(tags, ",")
 		bookmarks = append(bookmarks, &bookmark)
 	}
@@ -142,26 +138,25 @@ func (d *Database) List(ctx context.Context) ([]*models.Bookmark, error) {
 	return bookmarks, nil
 }
 
-func (d *Database) Search(ctx context.Context, query string) ([]*models.Bookmark, error) {
+func (d *Database) Search(ctx context.Context, query string, limit, offset int) ([]*models.Bookmark, error) {
 	searchQuery := `
 		SELECT id, url, title, description, tags, created_at, updated_at 
 		FROM bookmarks 
 		WHERE url LIKE ? OR title LIKE ? OR description LIKE ? OR tags LIKE ?
+		LIMIT ? OFFSET ?
 	`
 	searchParam := "%" + query + "%"
 
-	rows, err := d.db.QueryContext(ctx, searchQuery, searchParam, searchParam, searchParam, searchParam)
+	rows, err := d.db.QueryContext(ctx, searchQuery, searchParam, searchParam, searchParam, searchParam, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search bookmarks: %w", err)
 	}
 	defer rows.Close()
 
 	var bookmarks []*models.Bookmark
-
 	for rows.Next() {
 		var bookmark models.Bookmark
 		var tags string
-
 		err := rows.Scan(
 			&bookmark.ID, &bookmark.URL, &bookmark.Title, &bookmark.Description,
 			&tags, &bookmark.CreatedAt, &bookmark.UpdatedAt,
@@ -169,13 +164,8 @@ func (d *Database) Search(ctx context.Context, query string) ([]*models.Bookmark
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan bookmark row: %w", err)
 		}
-
 		bookmark.Tags = strings.Split(tags, ",")
 		bookmarks = append(bookmarks, &bookmark)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating bookmark rows: %w", err)
 	}
 
 	return bookmarks, nil
