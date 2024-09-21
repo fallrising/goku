@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/mattn/go-sqlite3 v1.14.23
 	github.com/urfave/cli/v2 v2.27.4
+	golang.org/x/net v0.29.0
 )
 
 require (

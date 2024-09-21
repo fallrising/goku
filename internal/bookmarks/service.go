@@ -3,6 +3,7 @@ package bookmarks
 import (
 	"context"
 	"fmt"
+	"github.com/fallrising/goku-cli/internal/fetcher"
 
 	"github.com/fallrising/goku-cli/pkg/interfaces"
 	"github.com/fallrising/goku-cli/pkg/models"
@@ -19,6 +20,25 @@ func NewBookmarkService(repo interfaces.BookmarkRepository) *BookmarkService {
 func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.Bookmark) error {
 	if bookmark.URL == "" {
 		return fmt.Errorf("URL is required")
+	}
+
+	// Fetch page content if title, description, or tags are not provided
+	if bookmark.Title == "" || bookmark.Description == "" || len(bookmark.Tags) == 0 {
+		content, err := fetcher.FetchPageContent(bookmark.URL)
+		if err != nil {
+			// Log the error but don't fail the bookmark creation
+			fmt.Printf("Warning: Failed to fetch page content: %v\n", err)
+		} else {
+			if bookmark.Title == "" {
+				bookmark.Title = content.Title
+			}
+			if bookmark.Description == "" {
+				bookmark.Description = content.Description
+			}
+			if len(bookmark.Tags) == 0 {
+				bookmark.Tags = content.Tags
+			}
+		}
 	}
 
 	return s.repo.Create(ctx, bookmark)
