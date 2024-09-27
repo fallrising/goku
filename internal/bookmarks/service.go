@@ -236,14 +236,57 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 	}
 	log.Println("Successfully parsed HTML content")
 
-	bookmarkCount := countBookmarksFromHTML(doc)
-	log.Printf("Found %d bookmarks to import", bookmarkCount)
+	uniqueURLs := make(map[string]struct{})
+	var uniqueBookmarks []*models.Bookmark
 
-	bar := progressbar.NewOptions(bookmarkCount,
+	// First pass: extract unique bookmarks
+	var extract func(*html.Node)
+	extract = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			var url, title string
+			var addDate int64
+
+			for _, attr := range n.Attr {
+				switch attr.Key {
+				case "href":
+					url = attr.Val
+				case "add_date":
+					addDate, _ = parseAddDate(attr.Val)
+				}
+			}
+
+			if n.FirstChild != nil {
+				title = n.FirstChild.Data
+			}
+
+			if url != "" {
+				if _, exists := uniqueURLs[url]; !exists {
+					uniqueURLs[url] = struct{}{}
+					bookmark := &models.Bookmark{
+						URL:   url,
+						Title: title,
+					}
+					if addDate != 0 {
+						bookmark.CreatedAt = time.Unix(addDate, 0)
+					}
+					uniqueBookmarks = append(uniqueBookmarks, bookmark)
+				}
+			}
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			extract(c)
+		}
+	}
+
+	extract(doc)
+	log.Printf("Found %d unique bookmarks to import", len(uniqueBookmarks))
+
+	bar := progressbar.NewOptions(len(uniqueBookmarks),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowCount(),
 		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[cyan][1/3][reset] Importing bookmarks..."),
+		progressbar.OptionSetDescription("[cyan][1/1][reset] Importing bookmarks..."),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
 			SaucerHead:    "[green]>[reset]",
@@ -253,116 +296,52 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 		}))
 
 	bookmarkChan := make(chan *models.Bookmark, 100)
-	resultChan := make(chan struct {
-		success bool
-		err     error
-	}, 100)
-	doneChan := make(chan struct{})
-
-	// Use a WaitGroup to ensure all workers have finished
+	resultChan := make(chan error, 100)
 	var wg sync.WaitGroup
 
 	// Start worker goroutines
-	const numWorkers = 5 // Reduced number of workers
+	const numWorkers = 5
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			log.Printf("Worker %d started", workerID)
 			for bookmark := range bookmarkChan {
 				err := s.CreateBookmark(ctx, bookmark)
 				if err != nil {
-					log.Printf("Worker %d failed to import bookmark %s: %v", workerID, bookmark.URL, err)
-					resultChan <- struct {
-						success bool
-						err     error
-					}{false, fmt.Errorf("failed to import bookmark %s: %w", bookmark.URL, err)}
+					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
 				} else {
-					log.Printf("Worker %d successfully imported bookmark: %s", workerID, bookmark.URL)
-					resultChan <- struct {
-						success bool
-						err     error
-					}{true, nil}
+					resultChan <- nil
+					bar.Add(1)
 				}
 			}
-			log.Printf("Worker %d finished", workerID)
 		}(i)
 	}
 
-	// Start a goroutine to close channels when traversal is done
+	// Send bookmarks to workers
 	go func() {
-		log.Println("Starting HTML traversal")
-		var traverse func(*html.Node)
-		traverse = func(n *html.Node) {
-			if n.Type == html.ElementNode && n.Data == "a" {
-				var url, title string
-				var addDate int64
-
-				for _, attr := range n.Attr {
-					switch attr.Key {
-					case "href":
-						url = attr.Val
-					case "add_date":
-						addDate, _ = parseAddDate(attr.Val)
-					}
-				}
-
-				if n.FirstChild != nil {
-					title = n.FirstChild.Data
-				}
-
-				if url != "" {
-					bookmark := &models.Bookmark{
-						URL:   url,
-						Title: title,
-					}
-
-					if addDate != 0 {
-						bookmark.CreatedAt = time.Unix(addDate, 0)
-					}
-
-					log.Printf("Sending bookmark to channel: %s", url)
-					bookmarkChan <- bookmark
-				}
-			}
-
-			for c := n.FirstChild; c != nil; c = c.NextSibling {
-				traverse(c)
-			}
+		for _, bookmark := range uniqueBookmarks {
+			bookmarkChan <- bookmark
 		}
-
-		traverse(doc)
-		log.Println("HTML traversal complete, closing bookmark channel")
 		close(bookmarkChan)
-
-		// Wait for all workers to finish
-		wg.Wait()
-		log.Println("All workers finished, closing result channel")
-		close(resultChan)
-		close(doneChan)
 	}()
 
-	// Handle results and errors
-	recordsCreated := 0
+	// Collect results
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Process results
 	var errors []error
-loop:
-	for {
-		select {
-		case result := <-resultChan:
-			if result.success {
-				recordsCreated++
-				bar.Add(1)
-			} else {
-				errors = append(errors, result.err)
-			}
-		case <-doneChan:
-			log.Println("Import process complete")
-			break loop
+	for err := range resultChan {
+		if err != nil {
+			errors = append(errors, err)
 		}
 	}
 
 	fmt.Println() // Add a newline after the progress bar
 
+	recordsCreated := len(uniqueBookmarks) - len(errors)
 	log.Printf("Import summary: %d records created, %d errors", recordsCreated, len(errors))
 
 	if len(errors) > 0 {
@@ -380,33 +359,12 @@ loop:
 	}
 	log.Printf("Total records in database after import: %d", totalRecords)
 
-	if totalRecords < recordsCreated {
-		log.Printf("Warning: Mismatch between imported records (%d) and database count (%d)", recordsCreated, totalRecords)
-	}
-
 	return recordsCreated, nil
 }
 
 // New method to count total bookmarks in the database
 func (s *BookmarkService) CountBookmarks(ctx context.Context) (int, error) {
 	return s.repo.Count(ctx)
-}
-
-// countBookmarksFromHTML traverses the HTML structure and counts the number of <a> tags,
-// which represent bookmarks in the HTML bookmark file format.
-func countBookmarksFromHTML(n *html.Node) int {
-	count := 0
-	var traverse func(*html.Node)
-	traverse = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			count++
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			traverse(c)
-		}
-	}
-	traverse(n)
-	return count
 }
 
 func parseAddDate(date string) (int64, error) {
