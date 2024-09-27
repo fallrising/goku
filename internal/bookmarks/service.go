@@ -366,7 +366,9 @@ loop:
 	log.Printf("Import summary: %d records created, %d errors", recordsCreated, len(errors))
 
 	if len(errors) > 0 {
-		log.Printf("Encountered errors during import: %v", errors)
+		for i, err := range errors {
+			log.Printf("Error %d: %v", i+1, err)
+		}
 		return recordsCreated, fmt.Errorf("encountered %d errors during import", len(errors))
 	}
 
