@@ -2,6 +2,7 @@ package bookmarks
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/net/html"
 	"io"
@@ -14,6 +15,151 @@ import (
 	"github.com/fallrising/goku-cli/pkg/models"
 	"github.com/schollz/progressbar/v3"
 )
+
+func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int, error) {
+	log.Println("Starting ImportFromJSON process")
+
+	// Read JSON content from the reader
+	content, err := io.ReadAll(r)
+	if err != nil {
+		log.Printf("Error reading JSON content: %v", err)
+		return 0, fmt.Errorf("failed to read JSON content: %w", err)
+	}
+	log.Printf("Read %d bytes of JSON content", len(content))
+
+	// Unmarshal the JSON data into a slice of BookmarkItem
+	var bookmarks []BookmarkItem
+	err = json.Unmarshal(content, &bookmarks)
+	if err != nil {
+		log.Printf("Error unmarshalling JSON: %v", err)
+		return 0, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+	log.Println("Successfully parsed JSON content")
+
+	// Use a map to store unique URLs
+	uniqueURLs := make(map[string]struct{})
+	var uniqueBookmarks []*models.Bookmark
+
+	// First pass: extract unique bookmarks recursively from JSON
+	var extract func([]BookmarkItem)
+	extract = func(items []BookmarkItem) {
+		for _, item := range items {
+			if item.Type == "link" && item.URL != "" {
+				// Filter out duplicates
+				if _, exists := uniqueURLs[item.URL]; !exists {
+					uniqueURLs[item.URL] = struct{}{}
+					bookmark := &models.Bookmark{
+						URL:   item.URL,
+						Title: item.Title,
+					}
+					if item.AddDate != 0 {
+						bookmark.CreatedAt = time.Unix(item.AddDate/1000, 0)
+					}
+					uniqueBookmarks = append(uniqueBookmarks, bookmark)
+				}
+			} else if item.Type == "folder" && len(item.Children) > 0 {
+				// Recursively process folder children
+				extract(item.Children)
+			}
+		}
+	}
+
+	extract(bookmarks)
+	log.Printf("Found %d unique bookmarks to import", len(uniqueBookmarks))
+
+	// Progress bar initialization
+	bar := progressbar.NewOptions(len(uniqueBookmarks),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetWidth(15),
+		progressbar.OptionSetDescription("[cyan][1/1][reset] Importing bookmarks..."),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+	)
+
+	// Channel and sync structures for concurrent processing
+	bookmarkChan := make(chan *models.Bookmark, 100)
+	resultChan := make(chan error, 100)
+	var wg sync.WaitGroup
+
+	// Number of concurrent workers
+	const numWorkers = 5
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for bookmark := range bookmarkChan {
+				if err := s.CreateBookmark(ctx, bookmark); err != nil {
+					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
+				} else {
+					resultChan <- nil
+					bar.Add(1) // Update progress bar
+				}
+			}
+		}(i)
+	}
+
+	// Send bookmarks to worker goroutines
+	go func() {
+		for _, bookmark := range uniqueBookmarks {
+			bookmarkChan <- bookmark
+		}
+		close(bookmarkChan)
+	}()
+
+	// Collect errors and wait for all workers to finish
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Process results and collect any errors
+	var errors []error
+	for err := range resultChan {
+		if err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	fmt.Println() // Add a newline after the progress bar
+
+	// Calculate number of successfully created bookmarks
+	recordsCreated := len(uniqueBookmarks) - len(errors)
+	log.Printf("Import summary: %d records created, %d errors", recordsCreated, len(errors))
+
+	// Log and return errors if any
+	if len(errors) > 0 {
+		for i, err := range errors {
+			log.Printf("Error %d: %v", i+1, err)
+		}
+		return recordsCreated, fmt.Errorf("encountered %d errors during import", len(errors))
+	}
+
+	// Verify import by counting records in the database
+	totalRecords, err := s.CountBookmarks(ctx)
+	if err != nil {
+		log.Printf("Error counting bookmarks after import: %v", err)
+		return recordsCreated, fmt.Errorf("failed to verify import: %w", err)
+	}
+	log.Printf("Total records in database after import: %d", totalRecords)
+
+	return recordsCreated, nil
+}
+
+// BookmarkItem is the struct used to unmarshal the JSON bookmark data
+type BookmarkItem struct {
+	Type     string         `json:"type"`
+	Title    string         `json:"title"`
+	URL      string         `json:"url,omitempty"`
+	AddDate  int64          `json:"addDate,omitempty"`
+	Icon     string         `json:"icon,omitempty"`
+	Children []BookmarkItem `json:"children,omitempty"`
+}
 
 func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int, error) {
 	log.Println("Starting ImportFromHTML process")
