@@ -185,12 +185,15 @@ func (s *BookmarkService) ListBookmarks(ctx context.Context, limit, offset int) 
 }
 
 func (s *BookmarkService) ExportToHTML(ctx context.Context) (string, error) {
-	bookmarks, err := s.ListBookmarks(ctx, 0, 0) // Get all bookmarks
+	const pageSize = 100 // Number of bookmarks to fetch per page
+
+	// Get total count of bookmarks
+	totalCount, err := s.CountBookmarks(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch bookmarks: %w", err)
+		return "", fmt.Errorf("failed to count bookmarks: %w", err)
 	}
 
-	bar := progressbar.Default(int64(len(bookmarks)))
+	bar := progressbar.Default(int64(totalCount))
 
 	var sb strings.Builder
 
@@ -201,17 +204,24 @@ func (s *BookmarkService) ExportToHTML(ctx context.Context) (string, error) {
 	sb.WriteString("<H1>Bookmarks</H1>\n")
 	sb.WriteString("<DL><p>\n")
 
-	// Write bookmarks
-	for _, bookmark := range bookmarks {
-		sb.WriteString(fmt.Sprintf("    <DT><A HREF=\"%s\" ADD_DATE=\"%d\">%s</A>\n",
-			bookmark.URL,
-			bookmark.CreatedAt.Unix(),
-			bookmark.Title))
-
-		if bookmark.Description != "" {
-			sb.WriteString(fmt.Sprintf("    <DD>%s\n", bookmark.Description))
+	// Fetch and write bookmarks in batches
+	for offset := 0; offset < totalCount; offset += pageSize {
+		bookmarks, err := s.ListBookmarks(ctx, pageSize, offset)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch bookmarks at offset %d: %w", offset, err)
 		}
-		bar.Add(1)
+
+		for _, bookmark := range bookmarks {
+			sb.WriteString(fmt.Sprintf("    <DT><A HREF=\"%s\" ADD_DATE=\"%d\">%s</A>\n",
+				html.EscapeString(bookmark.URL),
+				bookmark.CreatedAt.Unix(),
+				html.EscapeString(bookmark.Title)))
+
+			if bookmark.Description != "" {
+				sb.WriteString(fmt.Sprintf("    <DD>%s\n", html.EscapeString(bookmark.Description)))
+			}
+			bar.Add(1)
+		}
 	}
 
 	// Close HTML
