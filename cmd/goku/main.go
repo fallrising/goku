@@ -12,6 +12,20 @@ import (
 	"sort"
 )
 
+func init() {
+	// Set up logging to a file
+	logFile, err := os.OpenFile("goku.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Error opening log file: %v", err)
+	}
+
+	// Set log output to the file
+	log.SetOutput(logFile)
+
+	// Optionally, set the log flags for more detailed logging
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+}
+
 func main() {
 	dbPath := os.Getenv("GOKU_DB_PATH")
 	if dbPath == "" {

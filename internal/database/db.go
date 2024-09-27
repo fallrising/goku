@@ -445,3 +445,12 @@ func (d *Database) CountCreatedLastNDays(ctx context.Context, days int) (map[str
 
 	return counts, nil
 }
+
+func (d *Database) Count(ctx context.Context) (int, error) {
+	var count int
+	err := d.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bookmarks").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count bookmarks: %w", err)
+	}
+	return count, nil
+}

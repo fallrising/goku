@@ -7,8 +7,10 @@ import (
 	"github.com/fallrising/goku-cli/pkg/interfaces"
 	"golang.org/x/net/html"
 	"io"
+	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fallrising/goku-cli/pkg/models"
@@ -24,48 +26,66 @@ func NewBookmarkService(repo interfaces.BookmarkRepository) *BookmarkService {
 }
 
 func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.Bookmark) error {
+	log.Printf("CreateBookmark called with URL: %s", bookmark.URL)
+
 	if bookmark.URL == "" {
+		log.Println("Error: URL is required")
 		return fmt.Errorf("URL is required")
 	}
 
 	// Check if URL already exists in the database
 	existingBookmark, err := s.repo.GetByURL(ctx, bookmark.URL)
 	if err != nil {
+		log.Printf("Error checking for existing bookmark: %v", err)
 		return fmt.Errorf("failed to check for existing bookmark: %w", err)
 	}
 	if existingBookmark != nil {
+		log.Printf("Bookmark already exists with URL: %s", existingBookmark.URL)
 		return fmt.Errorf("bookmark with this URL already exists: %s", existingBookmark.URL)
 	}
 
 	// Check if URL starts with "http://" or "https://"
 	if !(strings.HasPrefix(bookmark.URL, "http://") || strings.HasPrefix(bookmark.URL, "https://")) {
 		bookmark.URL = "https://" + bookmark.URL
+		log.Printf("URL updated to: %s", bookmark.URL)
 	}
 
 	// Fetch page content if title, description, or tags are not provided
 	if bookmark.Title == "" || bookmark.Description == "" || len(bookmark.Tags) == 0 {
+		log.Println("Fetching page content for metadata")
 		content, err := fetcher.FetchPageContent(bookmark.URL)
 		if err != nil {
-			return fmt.Errorf("failed to fetch page content: %w", err)
+			log.Printf("Warning: failed to fetch page content: %v", err)
 		}
 
-		if content.FetchError != "" {
-			fmt.Printf("Warning: %s\n", content.FetchError)
+		if content != nil && content.FetchError != "" {
+			log.Printf("Warning: %s", content.FetchError)
 			bookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
-		} else {
+		} else if content != nil {
 			if bookmark.Title == "" {
 				bookmark.Title = content.Title
+				log.Printf("Title set from fetched content: %s", bookmark.Title)
 			}
 			if bookmark.Description == "" {
 				bookmark.Description = content.Description
+				log.Printf("Description set from fetched content: %s", bookmark.Description)
 			}
 			if len(bookmark.Tags) == 0 {
 				bookmark.Tags = content.Tags
+				log.Printf("Tags set from fetched content: %v", bookmark.Tags)
 			}
 		}
 	}
 
-	return s.repo.Create(ctx, bookmark)
+	log.Printf("Attempting to create bookmark in repository: %+v", bookmark)
+	err = s.repo.Create(ctx, bookmark)
+	if err != nil {
+		log.Printf("Error creating bookmark in repository: %v", err)
+		return fmt.Errorf("failed to create bookmark in repository: %w", err)
+	}
+
+	log.Printf("Bookmark successfully created with ID: %d", bookmark.ID)
+	return nil
 }
 
 func (s *BookmarkService) GetBookmark(ctx context.Context, id int64) (*models.Bookmark, error) {
@@ -201,17 +221,24 @@ func (s *BookmarkService) ExportToHTML(ctx context.Context) (string, error) {
 }
 
 func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int, error) {
+	log.Println("Starting ImportFromHTML process")
 	content, err := io.ReadAll(r)
 	if err != nil {
+		log.Printf("Error reading HTML content: %v", err)
 		return 0, fmt.Errorf("failed to read HTML content: %w", err)
 	}
+	log.Printf("Read %d bytes of HTML content", len(content))
 
 	doc, err := html.Parse(strings.NewReader(string(content)))
 	if err != nil {
+		log.Printf("Error parsing HTML: %v", err)
 		return 0, fmt.Errorf("failed to parse HTML: %w", err)
 	}
+	log.Println("Successfully parsed HTML content")
 
-	bookmarkCount := countBookmarks(doc)
+	bookmarkCount := countBookmarksFromHTML(doc)
+	log.Printf("Found %d bookmarks to import", bookmarkCount)
+
 	bar := progressbar.NewOptions(bookmarkCount,
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowCount(),
@@ -226,26 +253,45 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 		}))
 
 	bookmarkChan := make(chan *models.Bookmark, 100)
-	errChan := make(chan error, 100)
+	resultChan := make(chan struct {
+		success bool
+		err     error
+	}, 100)
 	doneChan := make(chan struct{})
 
+	// Use a WaitGroup to ensure all workers have finished
+	var wg sync.WaitGroup
+
 	// Start worker goroutines
-	const numWorkers = 10
+	const numWorkers = 5 // Reduced number of workers
 	for i := 0; i < numWorkers; i++ {
-		go func() {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			log.Printf("Worker %d started", workerID)
 			for bookmark := range bookmarkChan {
 				err := s.CreateBookmark(ctx, bookmark)
 				if err != nil {
-					errChan <- fmt.Errorf("failed to import bookmark %s: %w", bookmark.URL, err)
+					log.Printf("Worker %d failed to import bookmark %s: %v", workerID, bookmark.URL, err)
+					resultChan <- struct {
+						success bool
+						err     error
+					}{false, fmt.Errorf("failed to import bookmark %s: %w", bookmark.URL, err)}
 				} else {
-					bar.Add(1)
+					log.Printf("Worker %d successfully imported bookmark: %s", workerID, bookmark.URL)
+					resultChan <- struct {
+						success bool
+						err     error
+					}{true, nil}
 				}
 			}
-		}()
+			log.Printf("Worker %d finished", workerID)
+		}(i)
 	}
 
 	// Start a goroutine to close channels when traversal is done
 	go func() {
+		log.Println("Starting HTML traversal")
 		var traverse func(*html.Node)
 		traverse = func(n *html.Node) {
 			if n.Type == html.ElementNode && n.Data == "a" {
@@ -275,6 +321,7 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 						bookmark.CreatedAt = time.Unix(addDate, 0)
 					}
 
+					log.Printf("Sending bookmark to channel: %s", url)
 					bookmarkChan <- bookmark
 				}
 			}
@@ -285,44 +332,67 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 		}
 
 		traverse(doc)
+		log.Println("HTML traversal complete, closing bookmark channel")
 		close(bookmarkChan)
+
+		// Wait for all workers to finish
+		wg.Wait()
+		log.Println("All workers finished, closing result channel")
+		close(resultChan)
 		close(doneChan)
 	}()
 
 	// Handle results and errors
 	recordsCreated := 0
-	errors := []error{}
+	var errors []error
 loop:
 	for {
 		select {
-		case err := <-errChan:
-			errors = append(errors, err)
+		case result := <-resultChan:
+			if result.success {
+				recordsCreated++
+				bar.Add(1)
+			} else {
+				errors = append(errors, result.err)
+			}
 		case <-doneChan:
+			log.Println("Import process complete")
 			break loop
 		}
 	}
 
-	recordsCreated = bar.GetMax() - len(errors)
 	fmt.Println() // Add a newline after the progress bar
 
+	log.Printf("Import summary: %d records created, %d errors", recordsCreated, len(errors))
+
 	if len(errors) > 0 {
+		log.Printf("Encountered errors during import: %v", errors)
 		return recordsCreated, fmt.Errorf("encountered %d errors during import", len(errors))
+	}
+
+	// Verify the import by counting records in the database
+	totalRecords, err := s.CountBookmarks(ctx)
+	if err != nil {
+		log.Printf("Error counting bookmarks after import: %v", err)
+		return recordsCreated, fmt.Errorf("failed to verify import: %w", err)
+	}
+	log.Printf("Total records in database after import: %d", totalRecords)
+
+	if totalRecords < recordsCreated {
+		log.Printf("Warning: Mismatch between imported records (%d) and database count (%d)", recordsCreated, totalRecords)
 	}
 
 	return recordsCreated, nil
 }
 
-// truncateURL shortens the URL if it's longer than maxLength
-func truncateURL(url string, maxLength int) string {
-	if len(url) <= maxLength {
-		return url
-	}
-	return url[:maxLength-3] + "..."
+// New method to count total bookmarks in the database
+func (s *BookmarkService) CountBookmarks(ctx context.Context) (int, error) {
+	return s.repo.Count(ctx)
 }
 
-// countBookmarks traverses the HTML structure and counts the number of <a> tags,
+// countBookmarksFromHTML traverses the HTML structure and counts the number of <a> tags,
 // which represent bookmarks in the HTML bookmark file format.
-func countBookmarks(n *html.Node) int {
+func countBookmarksFromHTML(n *html.Node) int {
 	count := 0
 	var traverse func(*html.Node)
 	traverse = func(n *html.Node) {
