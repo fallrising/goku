@@ -3,6 +3,7 @@ module github.com/fallrising/goku-cli
 go 1.23.0
 
 require (
+	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/mattn/go-sqlite3 v1.14.23
 	github.com/schollz/progressbar/v3 v3.15.0
 	github.com/stretchr/testify v1.9.0
@@ -11,6 +12,7 @@ require (
 )
 
 require (
+	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect

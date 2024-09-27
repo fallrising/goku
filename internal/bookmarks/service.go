@@ -58,7 +58,7 @@ func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.B
 			log.Printf("Warning: %s", content.FetchError)
 			bookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
 		} else if content != nil {
-			if bookmark.Title == "" {
+			if bookmark.Title == "" || strings.HasPrefix(bookmark.Title, "http://") || strings.HasPrefix(bookmark.Title, "https://") {
 				bookmark.Title = content.Title
 				log.Printf("Title set from fetched content: %s", bookmark.Title)
 			}
