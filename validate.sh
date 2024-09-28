@@ -6,6 +6,7 @@ set -e
 TEST_DB="./goku.db"
 CACHE_DB="./goku_cache.db"
 DUCKDB_DB="./goku_stats.duckdb"
+DUCKDB_DB_WAL="./goku_stats.duckdb.wal"
 GOKU_CMD="./bin/goku"
 EXPORT_FILE="exported_bookmarks.html"
 
@@ -22,7 +23,7 @@ log() {
 # Cleanup function
 cleanup() {
     log "Cleaning up..."
-    rm -f "$TEST_DB" "$CACHE_DB" "$DUCKDB_DB" "$EXPORT_FILE"
+    rm -f "$TEST_DB" "$CACHE_DB" "$DUCKDB_DB" "$DUCKDB_DB_WAL" "$EXPORT_FILE"
 }
 
 test_command() {
