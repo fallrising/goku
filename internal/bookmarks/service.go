@@ -5,6 +5,7 @@ package bookmarks
 import (
 	"context"
 	"fmt"
+	"github.com/fallrising/goku-cli/internal/database"
 	"log"
 	"strings"
 
@@ -14,11 +15,12 @@ import (
 )
 
 type BookmarkService struct {
-	repo interfaces.BookmarkRepository
+	repo        interfaces.BookmarkRepository
+	duckDBStats *database.DuckDBStats
 }
 
-func NewBookmarkService(repo interfaces.BookmarkRepository) *BookmarkService {
-	return &BookmarkService{repo: repo}
+func NewBookmarkService(repo interfaces.BookmarkRepository, duckDBStats *database.DuckDBStats) *BookmarkService {
+	return &BookmarkService{repo: repo, duckDBStats: duckDBStats}
 }
 
 func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.Bookmark) error {

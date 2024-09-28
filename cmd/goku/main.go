@@ -26,12 +26,17 @@ func init() {
 func main() {
 	dbPath := os.Getenv("GOKU_DB_PATH")
 	if dbPath == "" {
-		dbPath = "goku.db" // Default to current directory if not specified
+		dbPath = "goku.db"
 	}
 
 	cacheDBPath := os.Getenv("GOKU_CACHE_DB_PATH")
 	if cacheDBPath == "" {
-		cacheDBPath = "goku_cache.db" // Default cache database path
+		cacheDBPath = "goku_cache.db"
+	}
+
+	duckDBPath := os.Getenv("GOKU_DUCKDB_PATH")
+	if duckDBPath == "" {
+		duckDBPath = "goku_stats.duckdb"
 	}
 
 	db, err := database.NewDatabase(dbPath, cacheDBPath)
@@ -43,7 +48,16 @@ func main() {
 		log.Fatalf("Failed to initialize database schema: %v", err)
 	}
 
-	bookmarkService := bookmarks.NewBookmarkService(db)
+	duckDBStats, err := database.NewDuckDBStats(duckDBPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize DuckDB: %v", err)
+	}
+
+	if err := duckDBStats.Init(); err != nil {
+		log.Fatalf("Failed to initialize DuckDB schema: %v", err)
+	}
+
+	bookmarkService := bookmarks.NewBookmarkService(db, duckDBStats)
 
 	app := &cli.App{
 		Name:  "goku",
@@ -61,6 +75,12 @@ func main() {
 				Value:   "goku_cache.db",
 				Usage:   "Path to the Goku cache database file",
 			},
+			&cli.StringFlag{
+				Name:    "duckdb",
+				EnvVars: []string{"GOKU_DUCKDB_PATH"},
+				Value:   "goku_stats.duckdb",
+				Usage:   "Path to the Goku DuckDB statistics file",
+			},
 		},
 		Commands: []*cli.Command{
 			commands.AddCommand(bookmarkService),
@@ -74,6 +94,7 @@ func main() {
 			commands.TagsCommand(bookmarkService),
 			commands.StatsCommand(bookmarkService),
 			commands.PurgeCommand(bookmarkService),
+			commands.SyncCommand(bookmarkService), // Add a new command to sync data to DuckDB
 		},
 	}
 
