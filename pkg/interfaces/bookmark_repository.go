@@ -24,4 +24,5 @@ type BookmarkRepository interface {
 	ListUniqueHostnames(ctx context.Context) ([]string, error)
 	CountCreatedLastNDays(ctx context.Context, days int) (map[string]int, error)
 	Count(ctx context.Context) (int, error)
+	Purge(ctx context.Context) error
 }

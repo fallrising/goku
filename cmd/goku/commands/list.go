@@ -19,16 +19,16 @@ func ListCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			limit := c.Int("limit")
 			offset := c.Int("offset")
 
-			bookmarks, err := bookmarkService.ListBookmarks(context.Background(), limit, offset)
+			listBookmarks, err := bookmarkService.ListBookmarks(context.Background(), limit, offset)
 			if err != nil {
-				return fmt.Errorf("failed to list bookmarks: %w", err)
+				return fmt.Errorf("failed to list listBookmarks: %w", err)
 			}
-			if len(bookmarks) == 0 {
-				fmt.Println("No bookmarks found.")
+			if len(listBookmarks) == 0 {
+				fmt.Println("No listBookmarks found.")
 				return nil
 			}
-			fmt.Printf("Displaying %d bookmark(s):\n", len(bookmarks))
-			for _, b := range bookmarks {
+			fmt.Printf("Displaying %d bookmark(s):\n", len(listBookmarks))
+			for _, b := range listBookmarks {
 				fmt.Printf("ID: %d, URL: %s, Title: %s, Tags: %v, Description: %v\n", b.ID, b.URL, b.Title, b.Tags, b.Description)
 			}
 			return nil

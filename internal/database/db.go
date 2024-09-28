@@ -10,10 +10,11 @@ import (
 )
 
 type Database struct {
-	db *sql.DB
+	db    *sql.DB
+	cache *CacheDB
 }
 
-func NewDatabase(dbPath string) (*Database, error) {
+func NewDatabase(dbPath string, cacheDBPath string) (*Database, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -23,7 +24,12 @@ func NewDatabase(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &Database{db: db}, nil
+	cacheDB, err := NewCacheDB(cacheDBPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache database: %w", err)
+	}
+
+	return &Database{db: db, cache: cacheDB}, nil
 }
 
 func (d *Database) Init() error {

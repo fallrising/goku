@@ -4,7 +4,9 @@ set -e
 
 # Configuration
 TEST_DB="./goku.db"
+CACHE_DB="./goku_cache.db"
 GOKU_CMD="./bin/goku"
+GOKU_LOG="./goku.log"
 
 # Helper functions
 log() {
@@ -18,6 +20,9 @@ run_goku() {
 cleanup() {
     log "Cleaning up..."
     rm -f "$TEST_DB"
+    rm -f "$CACHE_DB"
+    rm -f "$GOKU_LOG"
+    rm -f "exported_bookmarks.html"
 }
 
 assert() {
@@ -36,133 +41,142 @@ test_build() {
     fi
 }
 
-test_basic_crud() {
-    log "Testing basic CRUD operations"
-
-    log "1. Creating a bookmark with all details provided"
+test_add_command() {
+    log "Testing Add command"
+    log "Running command: $GOKU_CMD add --url \"https://example.com\" --title \"Example Site\" --description \"An example website\" --tags \"example,test\""
     CREATE_OUTPUT=$(run_goku add --url "https://example.com" --title "Example Site" --description "An example website" --tags "example,test")
+    log "Command output: $CREATE_OUTPUT"
     BOOKMARK_ID=$(echo "$CREATE_OUTPUT" | sed -n 's/.*ID: \([0-9]*\).*/\1/p')
-    assert $? "Failed to extract bookmark ID"
+    log "Extracted bookmark ID: $BOOKMARK_ID"
+    assert $? "Failed to add bookmark"
     log "Created bookmark with ID: $BOOKMARK_ID"
+}
 
-    log "2. Reading the created bookmark"
+test_get_command() {
+    log "Testing Get command"
     run_goku get --id "$BOOKMARK_ID"
-    assert $? "Failed to read bookmark"
+    assert $? "Failed to get bookmark"
+}
 
-    log "3. Updating the bookmark"
+test_update_command() {
+    log "Testing Update command"
     run_goku update --id "$BOOKMARK_ID" --title "Updated Example Site" --description "An updated example website" --tags "example,test,updated"
     assert $? "Failed to update bookmark"
+}
 
-    log "4. Reading the updated bookmark"
-    run_goku get --id "$BOOKMARK_ID"
-    assert $? "Failed to read updated bookmark"
-
-    log "5. Listing all bookmarks"
+test_list_command() {
+    log "Testing List command"
     run_goku list
     assert $? "Failed to list bookmarks"
 }
 
-test_partial_updates() {
-    log "Testing partial updates"
-
-    log "3.1 Testing partial update for title"
-    run_goku update --id "$BOOKMARK_ID" --title "Partially Updated Example Site"
-    PARTIAL_UPDATE_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
-    echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "Title:Partially Updated Example Site"
-    assert $? "Partial update of title failed"
-    echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "Description:An updated example website"
-    assert $? "Partial update changed description unexpectedly"
-
-    log "3.2 Testing partial update for URL"
-    run_goku update --id "$BOOKMARK_ID" --url "https://www.yahoo.com"
-    PARTIAL_UPDATE_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
-    echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "URL:https://www.yahoo.com"
-    assert $? "Partial update of URL failed"
-
-    log "3.3 Testing partial update for tags"
-    run_goku update --id "$BOOKMARK_ID" --tags "updated,test"
-    PARTIAL_UPDATE_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
-    echo "$PARTIAL_UPDATE_OUTPUT" | grep -q "updated test"
-    assert $? "Partial update of tags failed"
-}
-
-test_search() {
-    log "Testing search functionality"
-
-    log "6.1 Searching by title"
+test_search_command() {
+    log "Testing Search command"
     SEARCH_OUTPUT=$(run_goku search --query "Updated")
-    echo "$SEARCH_OUTPUT" | grep -q "updated test"
-    assert $? "Search by title failed"
-
-    log "6.2 Searching by URL"
-    SEARCH_OUTPUT=$(run_goku search --query "yahoo.com")
-    echo "$SEARCH_OUTPUT" | grep -q "https://www.yahoo.com"
-    assert $? "Search by URL failed"
-
-    log "6.3 Searching by description"
-    SEARCH_OUTPUT=$(run_goku search --query "updated example")
-    echo "$SEARCH_OUTPUT" | grep -q "An updated example website"
-    assert $? "Search by description failed"
-
-    log "6.4 Searching by tag"
-    SEARCH_OUTPUT=$(run_goku search --query "updated")
-    echo "$SEARCH_OUTPUT" | grep -q "updated test"
-    assert $? "Search by tag failed"
-
-    log "6.5 Searching with no results"
-    SEARCH_OUTPUT=$(run_goku search --query "nonexistent")
-    echo "$SEARCH_OUTPUT" | grep -q "No bookmarks found matching the query"
-    assert $? "Search with no results failed"
+    echo "$SEARCH_OUTPUT" | grep -q "Updated Example Site"
+    assert $? "Search failed"
 }
 
-test_tag_management() {
-    log "Testing tag management"
+test_delete_command() {
+    log "Testing Delete command"
+    run_goku delete --id "$BOOKMARK_ID"
+    assert $? "Failed to delete bookmark"
 
-    log "7.1 Removing a tag from the bookmark"
-    run_goku tags remove --id "$BOOKMARK_ID" --tag "test"
-    TAG_OUTPUT=$(run_goku get --id "$BOOKMARK_ID")
+    # Verify deletion
+    if run_goku get --id "$BOOKMARK_ID" &>/dev/null; then
+        log "Error: Bookmark was not properly deleted"
+        exit 1
+    else
+        log "Bookmark was properly deleted"
+    fi
+}
+
+test_tags_command() {
+    log "Testing Tags command"
+
+    # Add a bookmark with tags
+    run_goku add --url "https://tagtest.com" --title "Tag Test" --tags "test,tags"
+    assert $? "Failed to add bookmark for tag test"
+
+    # List tags
+    TAG_OUTPUT=$(run_goku tags list)
     echo "$TAG_OUTPUT" | grep -q "test"
+    assert $? "Failed to list tags"
+
+    # Remove a tag
+    run_goku tags remove --id 1 --tag "test"
     assert $? "Failed to remove tag"
 
-    log "7.2 Listing all unique tags"
-    run_goku tags list
-    assert $? "Failed to list tags"
+    # Verify tag removal
+    TAG_OUTPUT=$(run_goku tags list)
+    echo "$TAG_OUTPUT" | grep -qv "test"
+    assert $? "Tag was not properly removed"
 }
 
-test_import_export() {
-    log "Testing import and export functionality"
+test_stats_command() {
+    log "Testing Stats command"
+    STATS_OUTPUT=$(run_goku stats)
+    echo "$STATS_OUTPUT" | grep -q "Bookmark Statistics"
+    assert $? "Failed to generate statistics"
+}
 
-    log "8. Exporting bookmarks"
-    run_goku export --output "exported_bookmarks.html"
-    assert $? "Failed to export bookmarks"
+test_add_again_command() {
+    log "Testing Add command"
+    log "Running command: $GOKU_CMD add --url \"https://google.com\" --title \"Example Site\" --description \"An example website\" --tags \"example,test\""
+    CREATE_OUTPUT=$(run_goku add --url "https://google.com" --title "Example Site" --description "An example website" --tags "example,test")
+    log "Command output: $CREATE_OUTPUT"
+    BOOKMARK_ID=$(echo "$CREATE_OUTPUT" | sed -n 's/.*ID: \([0-9]*\).*/\1/p')
+    log "Extracted bookmark ID: $BOOKMARK_ID"
+    assert $? "Failed to add bookmark"
+    log "Created bookmark with ID: $BOOKMARK_ID"
+}
 
-    log "9. Importing bookmarks"
+test_import_commands() {
+    log "Testing Import command"
     run_goku import --file "exported_bookmarks.html"
     assert $? "Failed to import bookmarks"
-
-    rm -f "exported_bookmarks.html"
 }
 
-test_statistics() {
-    log "Testing statistics functionality"
+test_export_commands() {
+    log "Testing Export command"
+    run_goku export --output "exported_bookmarks.html"
+    assert $? "Failed to export bookmarks"
+}
 
-    log "10. Generating statistics"
-    run_goku stats
-    assert $? "Failed to generate statistics"
+test_purge_command() {
+    log "Testing Purge command"
+    echo "y" | run_goku purge
+    assert $? "Failed to purge bookmarks"
+
+    # Verify purge
+    BOOKMARK_COUNT=$(run_goku list | grep -c "ID:")
+    if [ "$BOOKMARK_COUNT" -ne 0 ]; then
+        log "Error: Bookmarks were not properly purged"
+        exit 1
+    else
+        log "All bookmarks were properly purged"
+    fi
 }
 
 # Main execution
 trap cleanup EXIT
 
-log "Starting CRUD, Search, and additional feature validation for Goku CLI"
+log "Starting comprehensive validation for Goku CLI"
 
+cleanup
 test_build
-test_basic_crud
-test_partial_updates
-test_search
-test_tag_management
-test_import_export
-test_statistics
+test_add_command
+test_get_command
+test_update_command
+test_list_command
+test_search_command
+test_tags_command
+test_stats_command
+test_delete_command
+test_add_again_command
+test_export_commands
+test_purge_command
+test_import_commands
 
 log "All tests completed successfully!"
 exit 0

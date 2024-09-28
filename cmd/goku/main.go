@@ -29,7 +29,12 @@ func main() {
 		dbPath = "goku.db" // Default to current directory if not specified
 	}
 
-	db, err := database.NewDatabase(dbPath)
+	cacheDBPath := os.Getenv("GOKU_CACHE_DB_PATH")
+	if cacheDBPath == "" {
+		cacheDBPath = "goku_cache.db" // Default cache database path
+	}
+
+	db, err := database.NewDatabase(dbPath, cacheDBPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -50,6 +55,12 @@ func main() {
 				Value:   "goku.db",
 				Usage:   "Path to the Goku database file",
 			},
+			&cli.StringFlag{
+				Name:    "cache-db",
+				EnvVars: []string{"GOKU_CACHE_DB_PATH"},
+				Value:   "goku_cache.db",
+				Usage:   "Path to the Goku cache database file",
+			},
 		},
 		Commands: []*cli.Command{
 			commands.AddCommand(bookmarkService),
@@ -62,6 +73,7 @@ func main() {
 			commands.ExportCommand(bookmarkService),
 			commands.TagsCommand(bookmarkService),
 			commands.StatsCommand(bookmarkService),
+			commands.PurgeCommand(bookmarkService),
 		},
 	}
 
