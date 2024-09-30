@@ -88,7 +88,7 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 	var wg sync.WaitGroup
 
 	// Number of concurrent workers
-	const numWorkers = 5
+	const numWorkers = 10
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func(workerID int) {

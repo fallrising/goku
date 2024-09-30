@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -98,7 +99,7 @@ func (d *Database) GetByURL(ctx context.Context, url string) (*models.Bookmark, 
 		&tags, &bookmark.CreatedAt, &bookmark.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get bookmark by URL: %w", err)
