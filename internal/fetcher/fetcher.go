@@ -34,7 +34,7 @@ func FetchPageContent(pageURL string) (*PageContent, bool, error) {
 		return &PageContent{FetchError: "URL must have a valid host"}, false, nil
 	}
 
-	if isInternalIP(pageURL) {
+	if ValidateIfInternalIP(pageURL) {
 		return &PageContent{FetchError: "Internal IP addresses are not supported"}, false, nil
 	}
 
@@ -141,7 +141,7 @@ func extractTags(doc *goquery.Document) []string {
 	return cleanedTags
 }
 
-func isInternalIP(urlString string) bool {
+func ValidateIfInternalIP(urlString string) bool {
 	u, err := url.Parse(urlString)
 	if err != nil {
 		return false

@@ -94,7 +94,8 @@ func main() {
 			commands.TagsCommand(bookmarkService),
 			commands.StatsCommand(bookmarkService),
 			commands.PurgeCommand(bookmarkService),
-			commands.SyncCommand(bookmarkService), // Add a new command to sync data to DuckDB
+			commands.SyncCommand(bookmarkService),
+			commands.FetchCommand(bookmarkService),
 		},
 	}
 
