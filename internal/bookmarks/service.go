@@ -52,11 +52,16 @@ func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.B
 	if bookmark.Title == "" || bookmark.Description == "" || len(bookmark.Tags) == 0 {
 		log.Println("Fetching page content for metadata")
 		var content *fetcher.PageContent
+		var retry bool
 		fetchData := ctx.Value("fetchData").(bool)
 		if fetchData {
-			content, err = fetcher.FetchPageContent(bookmark.URL)
-			if err != nil {
-				log.Printf("Warning: failed to fetch page content: %v", err)
+			content, retry, err = fetcher.FetchPageContent(bookmark.URL)
+			if err != nil && retry {
+				log.Printf("Warning: failed to fetch page content: %v, will try Wayback Machine", err)
+				content, err = fetcher.FetchMetadataFromWaybackMachine(bookmark.URL)
+				if err != nil {
+					log.Printf("Warning: failed to fetch metadata from Wayback Machine: %v", err)
+				}
 			}
 		}
 		// Update bookmark with fetched content
@@ -123,11 +128,16 @@ func (s *BookmarkService) UpdateBookmark(ctx context.Context, updatedBookmark *m
 
 		fetchData := ctx.Value("fetchData").(bool)
 		content := &fetcher.PageContent{}
+		retry := false
 		if fetchData {
 			// Fetch new metadata for the new URL
-			content, err = fetcher.FetchPageContent(updatedBookmark.URL)
-			if err != nil {
-				return fmt.Errorf("failed to fetch metadata for the updated URL: %w", err)
+			content, retry, err = fetcher.FetchPageContent(updatedBookmark.URL)
+			if err != nil && retry {
+				log.Printf("Warning: failed to fetch page content: %v, will try Wayback Machine", err)
+				content, err = fetcher.FetchMetadataFromWaybackMachine(updatedBookmark.URL)
+				if err != nil {
+					log.Printf("Warning: failed to fetch metadata from Wayback Machine: %v", err)
+				}
 			}
 			if content.FetchError != "" {
 				fmt.Printf("Warning: %s\n", content.FetchError)
