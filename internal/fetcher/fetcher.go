@@ -32,7 +32,7 @@ func FetchPageContent(pageURL string) (*PageContent, error) {
 	}
 
 	client := &http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: 200 * time.Millisecond,
 	}
 
 	resp, err := client.Get(pageURL)

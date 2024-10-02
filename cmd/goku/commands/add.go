@@ -17,6 +17,12 @@ func AddCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			&cli.StringFlag{Name: "title"},
 			&cli.StringFlag{Name: "description"},
 			&cli.StringSliceFlag{Name: "tags"},
+			&cli.BoolFlag{
+				Name:    "fetch",
+				Aliases: []string{"F"},
+				Usage:   "Enable fetching additional data for each bookmark",
+				Value:   false, // Disabled by default
+			},
 		},
 		Action: func(c *cli.Context) error {
 			bookmark := &models.Bookmark{
@@ -25,7 +31,9 @@ func AddCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 				Description: c.String("description"),
 				Tags:        c.StringSlice("tags"),
 			}
-			err := bookmarkService.CreateBookmark(context.Background(), bookmark)
+			fetchData := c.Bool("fetch")
+			ctx := context.WithValue(context.Background(), "fetchData", fetchData)
+			err := bookmarkService.CreateBookmark(ctx, bookmark)
 			if err != nil {
 				return fmt.Errorf("failed to add bookmark: %w", err)
 			}

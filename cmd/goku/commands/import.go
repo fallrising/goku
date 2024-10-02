@@ -20,9 +20,23 @@ func ImportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 				Usage:    "Input file path (.html or .json)",
 				Required: true,
 			},
+			&cli.IntFlag{
+				Name:    "workers",
+				Aliases: []string{"w"},
+				Usage:   "Number of worker goroutines for concurrent processing",
+				Value:   5, // Default value
+			},
+			&cli.BoolFlag{
+				Name:    "fetch",
+				Aliases: []string{"F"},
+				Usage:   "Enable fetching additional data for each bookmark",
+				Value:   false, // Disabled by default
+			},
 		},
 		Action: func(c *cli.Context) error {
 			filePath := c.String("file")
+			numWorkers := c.Int("workers")
+			fetchData := c.Bool("fetch")
 
 			// Open the file
 			file, err := openFile(filePath)
@@ -31,11 +45,27 @@ func ImportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			}
 			defer file.Close()
 
+			// Create a context with the import options
+			ctx := context.WithValue(context.Background(), "numWorkers", numWorkers)
+			ctx = context.WithValue(ctx, "fetchData", fetchData)
+
 			// Determine import type based on file extension
+			var recordsCreated int
 			if isJSON(filePath) {
-				return importFromJSON(bookmarkService, file)
+				recordsCreated, err = bookmarkService.ImportFromJSON(ctx, file)
+			} else {
+				recordsCreated, err = bookmarkService.ImportFromHTML(ctx, file)
 			}
-			return importFromHTML(bookmarkService, file)
+
+			if err != nil {
+				return fmt.Errorf("failed to import bookmarks: %w", err)
+			}
+
+			fmt.Printf("Import completed. %d bookmarks were successfully imported.\n", recordsCreated)
+			if fetchData {
+				fmt.Println("Additional data was fetched for each bookmark.")
+			}
+			return nil
 		},
 	}
 }
@@ -52,26 +82,4 @@ func openFile(filePath string) (*os.File, error) {
 // isJSON checks if the file is a JSON file based on the file extension.
 func isJSON(filePath string) bool {
 	return strings.HasSuffix(filePath, ".json")
-}
-
-// importFromJSON handles importing bookmarks from a JSON file.
-func importFromJSON(bookmarkService *bookmarks.BookmarkService, file *os.File) error {
-	fmt.Println("Importing from JSON")
-	recordsCreated, err := bookmarkService.ImportFromJSON(context.Background(), file)
-	if err != nil {
-		return fmt.Errorf("failed to import JSON bookmarks: %w", err)
-	}
-	fmt.Printf("Import completed. %d bookmarks were successfully imported.\n", recordsCreated)
-	return nil
-}
-
-// importFromHTML handles importing bookmarks from an HTML file.
-func importFromHTML(bookmarkService *bookmarks.BookmarkService, file *os.File) error {
-	fmt.Println("Importing from HTML")
-	recordsCreated, err := bookmarkService.ImportFromHTML(context.Background(), file)
-	if err != nil {
-		return fmt.Errorf("failed to import HTML bookmarks: %w", err)
-	}
-	fmt.Printf("Import completed. %d bookmarks were successfully imported.\n", recordsCreated)
-	return nil
 }

@@ -18,6 +18,10 @@ import (
 
 func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int, error) {
 	log.Println("Starting ImportFromJSON process")
+	numWorkers := ctx.Value("numWorkers").(int)
+	if numWorkers <= 0 {
+		numWorkers = 3
+	}
 
 	// Read JSON content from the reader
 	content, err := io.ReadAll(r)
@@ -88,7 +92,6 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 	var wg sync.WaitGroup
 
 	// Number of concurrent workers
-	const numWorkers = 10
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func(workerID int) {

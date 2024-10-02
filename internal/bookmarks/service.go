@@ -51,26 +51,32 @@ func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.B
 	// Fetch page content if title, description, or tags are not provided
 	if bookmark.Title == "" || bookmark.Description == "" || len(bookmark.Tags) == 0 {
 		log.Println("Fetching page content for metadata")
-		content, err := fetcher.FetchPageContent(bookmark.URL)
-		if err != nil {
-			log.Printf("Warning: failed to fetch page content: %v", err)
+		var content *fetcher.PageContent
+		fetchData := ctx.Value("fetchData").(bool)
+		if fetchData {
+			content, err = fetcher.FetchPageContent(bookmark.URL)
+			if err != nil {
+				log.Printf("Warning: failed to fetch page content: %v", err)
+			}
 		}
-
-		if content != nil && content.FetchError != "" {
-			log.Printf("Warning: %s", content.FetchError)
-			bookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
-		} else if content != nil {
-			if bookmark.Title == "" || strings.HasPrefix(bookmark.Title, "http://") || strings.HasPrefix(bookmark.Title, "https://") {
-				bookmark.Title = content.Title
-				log.Printf("Title set from fetched content: %s", bookmark.Title)
-			}
-			if bookmark.Description == "" {
-				bookmark.Description = content.Description
-				log.Printf("Description set from fetched content: %s", bookmark.Description)
-			}
-			if len(bookmark.Tags) == 0 {
-				bookmark.Tags = content.Tags
-				log.Printf("Tags set from fetched content: %v", bookmark.Tags)
+		// Update bookmark with fetched content
+		if content != nil {
+			if content.FetchError != "" {
+				log.Printf("Warning: %s", content.FetchError)
+				bookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
+			} else {
+				if bookmark.Title == "" || strings.HasPrefix(bookmark.Title, "http://") || strings.HasPrefix(bookmark.Title, "https://") {
+					bookmark.Title = content.Title
+					log.Printf("Title set from fetched content: %s", bookmark.Title)
+				}
+				if bookmark.Description == "" {
+					bookmark.Description = content.Description
+					log.Printf("Description set from fetched content: %s", bookmark.Description)
+				}
+				if len(bookmark.Tags) == 0 {
+					bookmark.Tags = content.Tags
+					log.Printf("Tags set from fetched content: %v", bookmark.Tags)
+				}
 			}
 		}
 	}
@@ -105,7 +111,7 @@ func (s *BookmarkService) UpdateBookmark(ctx context.Context, updatedBookmark *m
 	}
 
 	// Check if the URL has changed
-	if updatedBookmark.URL != "" && updatedBookmark.URL != existingBookmark.URL {
+	if updatedBookmark.URL != existingBookmark.URL {
 		// Check for duplicates
 		duplicate, err := s.repo.GetByURL(ctx, updatedBookmark.URL)
 		if err != nil {
@@ -115,20 +121,23 @@ func (s *BookmarkService) UpdateBookmark(ctx context.Context, updatedBookmark *m
 			return fmt.Errorf("another bookmark with URL '%s' already exists", updatedBookmark.URL)
 		}
 
-		// Fetch new metadata for the new URL
-		content, err := fetcher.FetchPageContent(updatedBookmark.URL)
-		if err != nil {
-			return fmt.Errorf("failed to fetch metadata for the updated URL: %w", err)
-		}
-
-		if content.FetchError != "" {
-			fmt.Printf("Warning: %s\n", content.FetchError)
-			updatedBookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
-		} else {
-			// Update the metadata with fetched content
-			updatedBookmark.Title = content.Title
-			updatedBookmark.Description = content.Description
-			updatedBookmark.Tags = content.Tags
+		fetchData := ctx.Value("fetchData").(bool)
+		content := &fetcher.PageContent{}
+		if fetchData {
+			// Fetch new metadata for the new URL
+			content, err = fetcher.FetchPageContent(updatedBookmark.URL)
+			if err != nil {
+				return fmt.Errorf("failed to fetch metadata for the updated URL: %w", err)
+			}
+			if content.FetchError != "" {
+				fmt.Printf("Warning: %s\n", content.FetchError)
+				updatedBookmark.Description = fmt.Sprintf("Metadata fetch failed: %s", content.FetchError)
+			} else {
+				// Update the metadata with fetched content
+				updatedBookmark.Title = content.Title
+				updatedBookmark.Description = content.Description
+				updatedBookmark.Tags = content.Tags
+			}
 		}
 	}
 
