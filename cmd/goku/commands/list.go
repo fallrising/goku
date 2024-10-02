@@ -9,8 +9,11 @@ import (
 
 func ListCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "list",
-		Usage: "List all bookmarks with pagination",
+		Name: "list",
+		Usage: "List all bookmarks with pagination\n\n" +
+			"Examples:\n" +
+			"  goku list\n" +
+			"  goku list --limit 20 --offset 40",
 		Flags: []cli.Flag{
 			&cli.IntFlag{Name: "limit", Value: 10, Usage: "Number of bookmarks to display per page"},
 			&cli.IntFlag{Name: "offset", Value: 0, Usage: "Offset to start listing bookmarks from"},

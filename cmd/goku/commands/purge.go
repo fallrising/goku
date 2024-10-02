@@ -8,8 +8,11 @@ import (
 
 func PurgeCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "purge",
-		Usage: "Delete all bookmarks from the database",
+		Name: "purge",
+		Usage: "Delete all bookmarks from the database\n\n" +
+			"Examples:\n" +
+			"  goku purge\n" +
+			"  goku purge --force",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "force",

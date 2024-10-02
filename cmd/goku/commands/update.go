@@ -10,8 +10,12 @@ import (
 
 func UpdateCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "update",
-		Usage: "Update a bookmark",
+		Name: "update",
+		Usage: "Search bookmarks with pagination\n\n" +
+			"Examples:\n" +
+			"  goku search --query \"example\"\n" +
+			"  goku search -q \"tag:programming\" --limit 20\n" +
+			"  goku search --query \"important\" --offset 10 --limit 5",
 		Flags: []cli.Flag{
 			&cli.Int64Flag{Name: "id", Required: true},
 			&cli.StringFlag{Name: "url"},

@@ -11,8 +11,12 @@ import (
 
 func ImportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "import",
-		Usage: "Import bookmarks from either HTML or JSON format",
+		Name: "import",
+		Usage: "Import bookmarks from HTML or JSON format\n\n" +
+			"Examples:\n" +
+			"  goku import --file bookmarks.html\n" +
+			"  goku import -f bookmarks.json --workers 10\n" +
+			"  goku import --file bookmarks.html --fetch",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "file",

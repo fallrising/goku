@@ -9,8 +9,11 @@ import (
 
 func TagsCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "tags",
-		Usage: "Manage tags for bookmarks",
+		Name: "tags",
+		Usage: "Manage tags for bookmarks\n\n" +
+			"Examples:\n" +
+			"  goku tags list\n" +
+			"  goku tags remove --id 123 --tag oldtag",
 		Subcommands: []*cli.Command{
 			{
 				Name:  "remove",

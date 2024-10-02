@@ -9,8 +9,10 @@ import (
 
 func GetCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "get",
-		Usage: "Get a bookmark by ID",
+		Name: "get",
+		Usage: "Get a bookmark by ID\n\n" +
+			"Example:\n" +
+			"  goku get --id 123",
 		Flags: []cli.Flag{
 			&cli.Int64Flag{Name: "id", Required: true},
 		},

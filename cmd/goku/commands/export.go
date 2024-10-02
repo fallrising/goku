@@ -10,8 +10,11 @@ import (
 
 func ExportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "export",
-		Usage: "Export bookmarks to HTML format",
+		Name: "export",
+		Usage: "Export bookmarks to HTML format\n\n" +
+			"Examples:\n" +
+			"  goku export\n" +
+			"  goku export --output bookmarks.html",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "output",

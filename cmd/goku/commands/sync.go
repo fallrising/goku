@@ -8,8 +8,10 @@ import (
 
 func SyncCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "sync",
-		Usage: "Sync data from SQLite to DuckDB for statistics",
+		Name: "sync",
+		Usage: "Sync data from SQLite to DuckDB for statistics\n\n" +
+			"Example:\n" +
+			"  goku sync",
 		Action: func(c *cli.Context) error {
 			fmt.Println("Syncing data to DuckDB...")
 			err := bookmarkService.SyncToDuckDB()

@@ -9,8 +9,12 @@ import (
 
 func SearchCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "search",
-		Usage: "Search bookmarks with pagination",
+		Name: "search",
+		Usage: "Search bookmarks with pagination\n\n" +
+			"Examples:\n" +
+			"  goku search --query \"example\"\n" +
+			"  goku search -q \"tag:programming\" --limit 20\n" +
+			"  goku search --query \"important\" --offset 10 --limit 5",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "query", Aliases: []string{"q"}, Required: true, Usage: "Search query"},
 			&cli.IntFlag{Name: "limit", Value: 10, Usage: "Number of bookmarks to display per page"},

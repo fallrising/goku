@@ -11,8 +11,12 @@ import (
 
 func FetchCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "fetch",
-		Usage: "Fetch or update metadata for bookmarks",
+		Name: "fetch",
+		Usage: "Fetch or update metadata for bookmarks\n\n" +
+			"Examples:\n" +
+			"  goku fetch --id 123\n" +
+			"  goku fetch --all\n" +
+			"  goku fetch --all --limit 20 --skip-internal",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:  "id",

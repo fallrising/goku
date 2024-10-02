@@ -10,8 +10,10 @@ import (
 
 func AddCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "add",
-		Usage: "Add a new bookmark",
+		Name:        "add",
+		Usage:       "Add a new bookmark",
+		Description: "Add a new bookmark to the database. If title, description, or tags are not provided, Goku will attempt to fetch this information from the webpage.",
+
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "url", Required: true},
 			&cli.StringFlag{Name: "title"},
@@ -20,10 +22,15 @@ func AddCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			&cli.BoolFlag{
 				Name:    "fetch",
 				Aliases: []string{"F"},
-				Usage:   "Enable fetching additional data for each bookmark",
-				Value:   false, // Disabled by default
+				Usage: "Add a new bookmark\n\n" +
+					"Examples:\n" +
+					"  goku add --url https://example.com\n" +
+					"  goku add --url https://example.com --title \"Example Site\" --tags tag1,tag2\n" +
+					"  goku add --url https://example.com --fetch",
+				Value: false, // Disabled by default
 			},
 		},
+		ArgsUsage: "<url>",
 		Action: func(c *cli.Context) error {
 			bookmark := &models.Bookmark{
 				URL:         c.String("url"),

@@ -9,8 +9,10 @@ import (
 
 func DeleteCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete a bookmark",
+		Name: "delete",
+		Usage: "Delete a bookmark\n\n" +
+			"Example:\n" +
+			"  goku delete --id 123",
 		Flags: []cli.Flag{
 			&cli.Int64Flag{Name: "id", Required: true},
 		},

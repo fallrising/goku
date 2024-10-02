@@ -10,8 +10,10 @@ import (
 
 func StatsCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 	return &cli.Command{
-		Name:  "stats",
-		Usage: "Display bookmark statistics",
+		Name: "stats",
+		Usage: "Display bookmark statistics\n\n" +
+			"Example:\n" +
+			"  goku stats",
 		Action: func(c *cli.Context) error {
 			stats, err := bookmarkService.GetStatistics(context.Background())
 			if err != nil {
