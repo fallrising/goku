@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func TagsCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func TagsCommand() *cli.Command {
 	return &cli.Command{
 		Name: "tags",
 		Usage: "Manage tags for bookmarks\n\n" +
@@ -25,6 +25,8 @@ func TagsCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 				Action: func(c *cli.Context) error {
 					bookmarkID := c.Int64("id")
 					tag := c.String("tag")
+					bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
+
 					err := bookmarkService.RemoveTagFromBookmark(context.Background(), bookmarkID, tag)
 					if err != nil {
 						return fmt.Errorf("failed to remove tag: %w", err)
@@ -37,6 +39,7 @@ func TagsCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 				Name:  "list",
 				Usage: "List all unique tags",
 				Action: func(c *cli.Context) error {
+					bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 					tags, err := bookmarkService.ListAllTags(context.Background())
 					if err != nil {
 						return fmt.Errorf("failed to list tags: %w", err)

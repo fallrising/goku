@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func SearchCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func SearchCommand() *cli.Command {
 	return &cli.Command{
 		Name: "search",
 		Usage: "Search bookmarks with pagination\n\n" +
@@ -21,6 +21,7 @@ func SearchCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			&cli.IntFlag{Name: "offset", Value: 0, Usage: "Offset to start search results from"},
 		},
 		Action: func(c *cli.Context) error {
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			query := c.String("query")
 			limit := c.Int("limit")
 			offset := c.Int("offset")

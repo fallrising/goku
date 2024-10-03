@@ -6,7 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func PurgeCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func PurgeCommand() *cli.Command {
 	return &cli.Command{
 		Name: "purge",
 		Usage: "Delete all bookmarks from the database\n\n" +
@@ -30,6 +30,7 @@ func PurgeCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 				}
 			}
 
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			err := bookmarkService.PurgeBookmarks(c.Context)
 			if err != nil {
 				return fmt.Errorf("failed to purge bookmarks: %w", err)

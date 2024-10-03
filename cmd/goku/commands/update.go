@@ -8,7 +8,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func UpdateCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func UpdateCommand() *cli.Command {
 	return &cli.Command{
 		Name: "update",
 		Usage: "Search bookmarks with pagination\n\n" +
@@ -39,6 +39,7 @@ func UpdateCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			}
 			fetchData := c.Bool("fetch")
 			ctx := context.WithValue(context.Background(), "fetchData", fetchData)
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			err := bookmarkService.UpdateBookmark(ctx, bookmark)
 			if err != nil {
 				return fmt.Errorf("failed to update bookmark: %w", err)

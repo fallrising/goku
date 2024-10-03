@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func ImportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func ImportCommand() *cli.Command {
 	return &cli.Command{
 		Name: "import",
 		Usage: "Import bookmarks from HTML or JSON format\n\n" +
@@ -41,6 +41,7 @@ func ImportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			filePath := c.String("file")
 			numWorkers := c.Int("workers")
 			fetchData := c.Bool("fetch")
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 
 			// Open the file
 			file, err := openFile(filePath)

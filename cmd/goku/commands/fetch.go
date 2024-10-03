@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func FetchCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func FetchCommand() *cli.Command {
 	return &cli.Command{
 		Name: "fetch",
 		Usage: "Fetch or update metadata for bookmarks\n\n" +
@@ -41,6 +41,7 @@ func FetchCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			all := c.Bool("all")
 			limit := c.Int("limit")
 			skipInternal := c.Bool("skip-internal")
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 
 			if !all && id == 0 {
 				return fmt.Errorf("please specify either --all or --id")

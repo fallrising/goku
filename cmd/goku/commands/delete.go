@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func DeleteCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func DeleteCommand() *cli.Command {
 	return &cli.Command{
 		Name: "delete",
 		Usage: "Delete a bookmark\n\n" +
@@ -17,6 +17,7 @@ func DeleteCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			&cli.Int64Flag{Name: "id", Required: true},
 		},
 		Action: func(c *cli.Context) error {
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			err := bookmarkService.DeleteBookmark(context.Background(), c.Int64("id"))
 			if err != nil {
 				return fmt.Errorf("failed to delete bookmark: %w", err)

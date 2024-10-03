@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/fallrising/goku-cli/cmd/goku/commands"
 	"github.com/fallrising/goku-cli/internal/bookmarks"
@@ -32,8 +34,6 @@ func setupLogging() {
 }
 
 func createApp() *cli.App {
-	bookmarkService := setupDatabases()
-
 	app := &cli.App{
 		Name:        "goku",
 		Usage:       "A powerful CLI bookmark manager",
@@ -46,7 +46,12 @@ func createApp() *cli.App {
 			},
 		},
 		Flags:    getGlobalFlags(),
-		Commands: getCommands(bookmarkService),
+		Commands: getCommands(),
+		Before: func(c *cli.Context) error {
+			bookmarkService := setupDatabases(c)
+			c.App.Metadata["bookmarkService"] = bookmarkService
+			return nil
+		},
 	}
 
 	sort.Sort(cli.CommandsByName(app.Commands))
@@ -55,10 +60,11 @@ func createApp() *cli.App {
 	return app
 }
 
-func setupDatabases() *bookmarks.BookmarkService {
-	dbPath := getEnvOrDefault("GOKU_DB_PATH", "goku.db")
-	cacheDBPath := getEnvOrDefault("GOKU_CACHE_DB_PATH", "goku_cache.db")
-	duckDBPath := getEnvOrDefault("GOKU_DUCKDB_PATH", "goku_stats.duckdb")
+func setupDatabases(c *cli.Context) *bookmarks.BookmarkService {
+	user := c.String("user")
+	dbPath := getEnvOrDefault(fmt.Sprintf("GOKU_DB_PATH_%s", strings.ToUpper(user)), fmt.Sprintf("%s.db", user))
+	cacheDBPath := getEnvOrDefault(fmt.Sprintf("GOKU_CACHE_DB_PATH_%s", strings.ToUpper(user)), fmt.Sprintf("%s_cache.db", user))
+	duckDBPath := getEnvOrDefault(fmt.Sprintf("GOKU_DUCKDB_PATH_%s", strings.ToUpper(user)), fmt.Sprintf("%s_stats.duckdb", user))
 
 	db, err := database.NewDatabase(dbPath, cacheDBPath)
 	if err != nil {
@@ -108,24 +114,30 @@ func getGlobalFlags() []cli.Flag {
 			Value:   "goku_stats.duckdb",
 			Usage:   "Path to the Goku DuckDB statistics file",
 		},
+		&cli.StringFlag{
+			Name:    "user",
+			EnvVars: []string{"GOKU_USER"},
+			Value:   "goku",
+			Usage:   "User profile to use (determines which database to connect to)",
+		},
 	}
 }
 
-func getCommands(bookmarkService *bookmarks.BookmarkService) []*cli.Command {
+func getCommands() []*cli.Command {
 	return []*cli.Command{
-		commands.AddCommand(bookmarkService),
-		commands.DeleteCommand(bookmarkService),
-		commands.GetCommand(bookmarkService),
-		commands.ListCommand(bookmarkService),
-		commands.SearchCommand(bookmarkService),
-		commands.UpdateCommand(bookmarkService),
-		commands.ImportCommand(bookmarkService),
-		commands.ExportCommand(bookmarkService),
-		commands.TagsCommand(bookmarkService),
-		commands.StatsCommand(bookmarkService),
-		commands.PurgeCommand(bookmarkService),
-		commands.SyncCommand(bookmarkService),
-		commands.FetchCommand(bookmarkService),
+		commands.AddCommand(),
+		commands.DeleteCommand(),
+		commands.GetCommand(),
+		commands.ListCommand(),
+		commands.SearchCommand(),
+		commands.UpdateCommand(),
+		commands.ImportCommand(),
+		commands.ExportCommand(),
+		commands.TagsCommand(),
+		commands.StatsCommand(),
+		commands.PurgeCommand(),
+		commands.SyncCommand(),
+		commands.FetchCommand(),
 	}
 }
 

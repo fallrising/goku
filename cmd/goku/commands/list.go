@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func ListCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func ListCommand() *cli.Command {
 	return &cli.Command{
 		Name: "list",
 		Usage: "List all bookmarks with pagination\n\n" +
@@ -22,6 +22,7 @@ func ListCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			limit := c.Int("limit")
 			offset := c.Int("offset")
 
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			listBookmarks, err := bookmarkService.ListBookmarks(context.Background(), limit, offset)
 			if err != nil {
 				return fmt.Errorf("failed to list listBookmarks: %w", err)

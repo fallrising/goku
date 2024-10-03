@@ -8,13 +8,14 @@ import (
 	"sort"
 )
 
-func StatsCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func StatsCommand() *cli.Command {
 	return &cli.Command{
 		Name: "stats",
 		Usage: "Display bookmark statistics\n\n" +
 			"Example:\n" +
 			"  goku stats",
 		Action: func(c *cli.Context) error {
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			stats, err := bookmarkService.GetStatistics(context.Background())
 			if err != nil {
 				return fmt.Errorf("failed to get statistics: %w", err)

@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func ExportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func ExportCommand() *cli.Command {
 	return &cli.Command{
 		Name: "export",
 		Usage: "Export bookmarks to HTML format\n\n" +
@@ -24,6 +24,7 @@ func ExportCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			fmt.Println("Exporting bookmarks...")
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			html, err := bookmarkService.ExportToHTML(context.Background())
 			if err != nil {
 				return fmt.Errorf("failed to export bookmarks: %w", err)

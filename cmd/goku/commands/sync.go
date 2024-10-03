@@ -6,7 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func SyncCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func SyncCommand() *cli.Command {
 	return &cli.Command{
 		Name: "sync",
 		Usage: "Sync data from SQLite to DuckDB for statistics\n\n" +
@@ -14,6 +14,7 @@ func SyncCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 			"  goku sync",
 		Action: func(c *cli.Context) error {
 			fmt.Println("Syncing data to DuckDB...")
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			err := bookmarkService.SyncToDuckDB()
 			if err != nil {
 				return fmt.Errorf("failed to sync data to DuckDB: %w", err)

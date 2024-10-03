@@ -8,7 +8,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func AddCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
+func AddCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "add",
 		Usage:       "Add a new bookmark",
@@ -32,6 +32,7 @@ func AddCommand(bookmarkService *bookmarks.BookmarkService) *cli.Command {
 		},
 		ArgsUsage: "<url>",
 		Action: func(c *cli.Context) error {
+			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
 			bookmark := &models.Bookmark{
 				URL:         c.String("url"),
 				Title:       c.String("title"),
