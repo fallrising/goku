@@ -12,16 +12,16 @@ import (
 func ImportCommand() *cli.Command {
 	return &cli.Command{
 		Name: "import",
-		Usage: "Import bookmarks from HTML or JSON format\n\n" +
+		Usage: "Import bookmarks from HTML, JSON, or plain text URL list\n\n" +
 			"Examples:\n" +
 			"  goku import --file bookmarks.html\n" +
 			"  goku import -f bookmarks.json --workers 10\n" +
-			"  goku import --file bookmarks.html --fetch",
+			"  goku import --file bookmarks.txt",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "file",
 				Aliases:  []string{"f"},
-				Usage:    "Input file path (.html or .json)",
+				Usage:    "Input file path (.html, .json, or .txt)",
 				Required: true,
 			},
 			&cli.IntFlag{
@@ -58,8 +58,12 @@ func ImportCommand() *cli.Command {
 			var recordsCreated int
 			if isJSON(filePath) {
 				recordsCreated, err = bookmarkService.ImportFromJSON(ctx, file)
-			} else {
+			} else if isHTML(filePath) {
 				recordsCreated, err = bookmarkService.ImportFromHTML(ctx, file)
+			} else if isText(filePath) {
+				recordsCreated, err = bookmarkService.ImportFromText(ctx, file)
+			} else {
+				return fmt.Errorf("unsupported file format: %s", filePath)
 			}
 
 			if err != nil {
@@ -86,5 +90,15 @@ func openFile(filePath string) (*os.File, error) {
 
 // isJSON checks if the file is a JSON file based on the file extension.
 func isJSON(filePath string) bool {
-	return strings.HasSuffix(filePath, ".json")
+	return strings.HasSuffix(strings.ToLower(filePath), ".json")
+}
+
+// isHTML checks if the file is an HTML file based on the file extension.
+func isHTML(filePath string) bool {
+	return strings.HasSuffix(strings.ToLower(filePath), ".html") || strings.HasSuffix(strings.ToLower(filePath), ".htm")
+}
+
+// isText checks if the file is a plain text file based on the file extension.
+func isText(filePath string) bool {
+	return strings.HasSuffix(strings.ToLower(filePath), ".txt")
 }

@@ -16,6 +16,8 @@ TEST_USER_DUCKDB_DB_WAL="./${TEST_USER}_stats.duckdb.wal"
 GOKU_CMD="./bin/goku"
 EXPORT_FILE="exported_bookmarks.html"
 TEST_USER_EXPORT_FILE="exported_${TEST_USER}_bookmarks.html"
+TXT_FILE="bookmarks.txt"
+TEST_USER_TXT_FILE="bookmarks_${TEST_USER}.txt"
 
 # Helper function to run goku commands
 run_goku() {
@@ -107,6 +109,7 @@ test_command stats
 test_command export --output "$EXPORT_FILE"
 test_command purge
 test_command import --file "$EXPORT_FILE"
+test_command import --file "$TXT_FILE"
 test_command sync
 test_command delete --id 1
 
@@ -121,6 +124,7 @@ test_command_test_user tags list
 test_command_test_user stats
 test_command_test_user export --output "$TEST_USER_EXPORT_FILE"
 test_command_test_user purge
+test_command_test_user import --file "$TEST_USER_TXT_FILE"
 test_command_test_user import --file "$TEST_USER_EXPORT_FILE"
 test_command_test_user sync
 test_command_test_user delete --id 1

@@ -306,6 +306,126 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 	return recordsCreated, nil
 }
 
+func (s *BookmarkService) ImportFromText(ctx context.Context, r io.Reader) (int, error) {
+	log.Println("Starting ImportFromText process")
+
+	// Read text content line by line
+	content, err := io.ReadAll(r)
+	if err != nil {
+		log.Printf("Error reading text content: %v", err)
+		return 0, fmt.Errorf("failed to read text content: %w", err)
+	}
+	lines := strings.Split(string(content), "\n")
+
+	uniqueURLs := make(map[string]struct{})
+	var uniqueBookmarks []*models.Bookmark
+
+	// Validate and deduplicate URLs
+	for _, line := range lines {
+		url := strings.TrimSpace(line)
+		if url == "" {
+			continue
+		}
+
+		if _, exists := uniqueURLs[url]; !exists {
+			uniqueURLs[url] = struct{}{}
+
+			bookmark := &models.Bookmark{
+				URL:       url,
+				Title:     "Imported from Text",
+				CreatedAt: time.Now(), // Set default timestamp
+			}
+			uniqueBookmarks = append(uniqueBookmarks, bookmark)
+		}
+	}
+
+	log.Printf("Found %d unique bookmarks to import", len(uniqueBookmarks))
+
+	// Progress bar initialization
+	bar := progressbar.NewOptions(len(uniqueBookmarks),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetWidth(15),
+		progressbar.OptionSetDescription("[cyan][1/1][reset] Importing bookmarks..."),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+	)
+
+	bookmarkChan := make(chan *models.Bookmark, 100)
+	resultChan := make(chan error, 100)
+	var wg sync.WaitGroup
+
+	// Number of workers for concurrent processing
+	numWorkers := ctx.Value("numWorkers").(int)
+	if numWorkers <= 0 {
+		numWorkers = 3
+	}
+
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for bookmark := range bookmarkChan {
+				if err := s.CreateBookmark(ctx, bookmark); err != nil {
+					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
+				} else {
+					resultChan <- nil
+					bar.Add(1)
+				}
+			}
+		}(i)
+	}
+
+	// Send bookmarks to worker goroutines
+	go func() {
+		for _, bookmark := range uniqueBookmarks {
+			bookmarkChan <- bookmark
+		}
+		close(bookmarkChan)
+	}()
+
+	// Collect errors and wait for all workers to finish
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Process results
+	var errors []error
+	for err := range resultChan {
+		if err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	fmt.Println() // Add a newline after the progress bar
+
+	recordsCreated := len(uniqueBookmarks) - len(errors)
+	log.Printf("Import summary: %d records created, %d errors", recordsCreated, len(errors))
+
+	if len(errors) > 0 {
+		for i, err := range errors {
+			log.Printf("Error %d: %v", i+1, err)
+		}
+		return recordsCreated, fmt.Errorf("encountered %d errors during import", len(errors))
+	}
+
+	// Verify the import by counting records in the database
+	totalRecords, err := s.CountBookmarks(ctx)
+	if err != nil {
+		log.Printf("Error counting bookmarks after import: %v", err)
+		return recordsCreated, fmt.Errorf("failed to verify import: %w", err)
+	}
+	log.Printf("Total records in database after import: %d", totalRecords)
+
+	return recordsCreated, nil
+}
+
 func (s *BookmarkService) CountBookmarks(ctx context.Context) (int, error) {
 	return s.repo.Count(ctx)
 }
