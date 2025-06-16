@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/fallrising/goku-cli/internal/bookmarks"
+	"github.com/fallrising/goku-cli/internal/mqtt"
 	"github.com/urfave/cli/v2"
 	"os"
 	"strings"
@@ -16,7 +17,8 @@ func ImportCommand() *cli.Command {
 			"Examples:\n" +
 			"  goku import --file bookmarks.html\n" +
 			"  goku import -f bookmarks.json --workers 10\n" +
-			"  goku import --file bookmarks.txt",
+			"  goku import --file bookmarks.txt\n" +
+			"  goku import -f urls.txt --mqtt-broker localhost --mqtt-port 1883 --mqtt-topic bookmarks/imported",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "file",
@@ -36,12 +38,72 @@ func ImportCommand() *cli.Command {
 				Usage:   "Enable fetching additional data for each bookmark",
 				Value:   false, // Disabled by default
 			},
+			// MQTT Configuration Flags
+			&cli.StringFlag{
+				Name:  "mqtt-broker",
+				Usage: "MQTT broker hostname/IP (enables MQTT publishing)",
+			},
+			&cli.IntFlag{
+				Name:  "mqtt-port",
+				Usage: "MQTT broker port",
+				Value: 1883,
+			},
+			&cli.StringFlag{
+				Name:  "mqtt-client-id",
+				Usage: "MQTT client ID (auto-generated if not provided)",
+			},
+			&cli.StringFlag{
+				Name:  "mqtt-username",
+				Usage: "MQTT username (optional)",
+			},
+			&cli.StringFlag{
+				Name:  "mqtt-password",
+				Usage: "MQTT password (optional)",
+			},
+			&cli.StringFlag{
+				Name:  "mqtt-topic",
+				Usage: "MQTT topic for bookmark events",
+				Value: "goku/bookmarks",
+			},
+			&cli.IntFlag{
+				Name:  "mqtt-qos",
+				Usage: "MQTT QoS level (0, 1, or 2)",
+				Value: 1,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			filePath := c.String("file")
 			numWorkers := c.Int("workers")
 			fetchData := c.Bool("fetch")
 			bookmarkService := c.App.Metadata["bookmarkService"].(*bookmarks.BookmarkService)
+
+			// Setup MQTT client if broker is provided
+			var mqttClient *mqtt.Client
+			if mqttBroker := c.String("mqtt-broker"); mqttBroker != "" {
+				mqttConfig := &mqtt.Config{
+					Broker:   mqttBroker,
+					Port:     c.Int("mqtt-port"),
+					ClientID: c.String("mqtt-client-id"),
+					Username: c.String("mqtt-username"),
+					Password: c.String("mqtt-password"),
+					Topic:    c.String("mqtt-topic"),
+					QoS:      byte(c.Int("mqtt-qos")),
+				}
+				
+				var err error
+				mqttClient, err = mqtt.NewClient(mqttConfig)
+				if err != nil {
+					return fmt.Errorf("failed to create MQTT client: %w", err)
+				}
+				
+				if err := mqttClient.Connect(); err != nil {
+					return fmt.Errorf("failed to connect to MQTT broker: %w", err)
+				}
+				defer mqttClient.Disconnect()
+				
+				fmt.Printf("MQTT: Connected to broker %s:%d, publishing to topic '%s'\n", 
+					mqttBroker, c.Int("mqtt-port"), c.String("mqtt-topic"))
+			}
 
 			// Open the file
 			file, err := openFile(filePath)
@@ -53,6 +115,7 @@ func ImportCommand() *cli.Command {
 			// Create a context with the import options
 			ctx := context.WithValue(context.Background(), "numWorkers", numWorkers)
 			ctx = context.WithValue(ctx, "fetchData", fetchData)
+			ctx = context.WithValue(ctx, "mqttClient", mqttClient)
 
 			// Determine import type based on file extension
 			var recordsCreated int
@@ -73,6 +136,9 @@ func ImportCommand() *cli.Command {
 			fmt.Printf("Import completed. %d bookmarks were successfully imported.\n", recordsCreated)
 			if fetchData {
 				fmt.Println("Additional data was fetched for each bookmark.")
+			}
+			if mqttClient != nil {
+				fmt.Printf("MQTT: Published %d bookmark events to topic '%s'\n", recordsCreated, c.String("mqtt-topic"))
 			}
 			return nil
 		},

@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/fallrising/goku-cli/internal/mqtt"
 	"github.com/fallrising/goku-cli/pkg/models"
 )
 
@@ -76,6 +77,12 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 	total := int64(len(uniqueBookmarks))
 	fmt.Printf("Importing %d bookmarks...\n", total)
 
+	// Get MQTT client from context if provided
+	var mqttClient *mqtt.Client
+	if client := ctx.Value("mqttClient"); client != nil {
+		mqttClient = client.(*mqtt.Client)
+	}
+
 	// Channel and sync structures for concurrent processing
 	bookmarkChan := make(chan *models.Bookmark, 100)
 	resultChan := make(chan error, 100)
@@ -90,6 +97,13 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 				if err := s.CreateBookmark(ctx, bookmark); err != nil {
 					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
 				} else {
+					// Publish to MQTT if client is available
+					if mqttClient != nil && mqttClient.IsConnected() {
+						if err := mqttClient.PublishBookmark("imported", bookmark, "json-import"); err != nil {
+							log.Printf("MQTT publish failed for %s: %v", bookmark.URL, err)
+						}
+					}
+					
 					resultChan <- nil
 					count := atomic.AddInt64(&processed, 1)
 					if count%10 == 0 || count == total {
@@ -224,6 +238,12 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 	total := int64(len(uniqueBookmarks))
 	fmt.Printf("Importing %d bookmarks...\n", total)
 
+	// Get MQTT client from context if provided
+	var mqttClient *mqtt.Client
+	if client := ctx.Value("mqttClient"); client != nil {
+		mqttClient = client.(*mqtt.Client)
+	}
+
 	bookmarkChan := make(chan *models.Bookmark, 100)
 	resultChan := make(chan error, 100)
 	var wg sync.WaitGroup
@@ -239,6 +259,13 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 				if err != nil {
 					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
 				} else {
+					// Publish to MQTT if client is available
+					if mqttClient != nil && mqttClient.IsConnected() {
+						if err := mqttClient.PublishBookmark("imported", bookmark, "html-import"); err != nil {
+							log.Printf("MQTT publish failed for %s: %v", bookmark.URL, err)
+						}
+					}
+					
 					resultChan <- nil
 					count := atomic.AddInt64(&processed, 1)
 					if count%10 == 0 || count == total {
@@ -334,6 +361,12 @@ func (s *BookmarkService) ImportFromText(ctx context.Context, r io.Reader) (int,
 	total := int64(len(uniqueBookmarks))
 	fmt.Printf("Importing %d bookmarks...\n", total)
 
+	// Get MQTT client from context if provided
+	var mqttClient *mqtt.Client
+	if client := ctx.Value("mqttClient"); client != nil {
+		mqttClient = client.(*mqtt.Client)
+	}
+
 	bookmarkChan := make(chan *models.Bookmark, 100)
 	resultChan := make(chan error, 100)
 	var wg sync.WaitGroup
@@ -352,6 +385,13 @@ func (s *BookmarkService) ImportFromText(ctx context.Context, r io.Reader) (int,
 				if err := s.CreateBookmark(ctx, bookmark); err != nil {
 					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
 				} else {
+					// Publish to MQTT if client is available
+					if mqttClient != nil && mqttClient.IsConnected() {
+						if err := mqttClient.PublishBookmark("imported", bookmark, "text-import"); err != nil {
+							log.Printf("MQTT publish failed for %s: %v", bookmark.URL, err)
+						}
+					}
+					
 					resultChan <- nil
 					count := atomic.AddInt64(&processed, 1)
 					if count%10 == 0 || count == total {
