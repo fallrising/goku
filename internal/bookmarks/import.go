@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fallrising/goku-cli/pkg/models"
-	"github.com/schollz/progressbar/v3"
 )
 
 func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int, error) {
@@ -71,20 +71,10 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 	extract(bookmarks)
 	log.Printf("Found %d unique bookmarks to import", len(uniqueBookmarks))
 
-	// Progress bar initialization
-	bar := progressbar.NewOptions(len(uniqueBookmarks),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[cyan][1/1][reset] Importing bookmarks..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}),
-	)
+	// Progress tracking
+	var processed int64
+	total := int64(len(uniqueBookmarks))
+	fmt.Printf("Importing %d bookmarks...\n", total)
 
 	// Channel and sync structures for concurrent processing
 	bookmarkChan := make(chan *models.Bookmark, 100)
@@ -101,7 +91,10 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
 				} else {
 					resultChan <- nil
-					bar.Add(1) // Update progress bar
+					count := atomic.AddInt64(&processed, 1)
+					if count%10 == 0 || count == total {
+						fmt.Printf("Progress: %d/%d bookmarks imported\n", count, total)
+					}
 				}
 			}
 		}(i)
@@ -129,7 +122,7 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 		}
 	}
 
-	fmt.Println() // Add a newline after the progress bar
+	fmt.Printf("Import completed: %d/%d bookmarks processed\n", processed, total)
 
 	// Calculate number of successfully created bookmarks
 	recordsCreated := len(uniqueBookmarks) - len(errors)
@@ -226,18 +219,10 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 	extract(doc)
 	log.Printf("Found %d unique bookmarks to import", len(uniqueBookmarks))
 
-	bar := progressbar.NewOptions(len(uniqueBookmarks),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[cyan][1/1][reset] Importing bookmarks..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
+	// Progress tracking
+	var processed int64
+	total := int64(len(uniqueBookmarks))
+	fmt.Printf("Importing %d bookmarks...\n", total)
 
 	bookmarkChan := make(chan *models.Bookmark, 100)
 	resultChan := make(chan error, 100)
@@ -255,7 +240,10 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
 				} else {
 					resultChan <- nil
-					bar.Add(1)
+					count := atomic.AddInt64(&processed, 1)
+					if count%10 == 0 || count == total {
+						fmt.Printf("Progress: %d/%d bookmarks imported\n", count, total)
+					}
 				}
 			}
 		}(i)
@@ -283,7 +271,7 @@ func (s *BookmarkService) ImportFromHTML(ctx context.Context, r io.Reader) (int,
 		}
 	}
 
-	fmt.Println() // Add a newline after the progress bar
+	fmt.Printf("Import completed: %d/%d bookmarks processed\n", processed, total)
 
 	recordsCreated := len(uniqueBookmarks) - len(errors)
 	log.Printf("Import summary: %d records created, %d errors", recordsCreated, len(errors))
@@ -341,20 +329,10 @@ func (s *BookmarkService) ImportFromText(ctx context.Context, r io.Reader) (int,
 
 	log.Printf("Found %d unique bookmarks to import", len(uniqueBookmarks))
 
-	// Progress bar initialization
-	bar := progressbar.NewOptions(len(uniqueBookmarks),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[cyan][1/1][reset] Importing bookmarks..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}),
-	)
+	// Progress tracking
+	var processed int64
+	total := int64(len(uniqueBookmarks))
+	fmt.Printf("Importing %d bookmarks...\n", total)
 
 	bookmarkChan := make(chan *models.Bookmark, 100)
 	resultChan := make(chan error, 100)
@@ -375,7 +353,10 @@ func (s *BookmarkService) ImportFromText(ctx context.Context, r io.Reader) (int,
 					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
 				} else {
 					resultChan <- nil
-					bar.Add(1)
+					count := atomic.AddInt64(&processed, 1)
+					if count%10 == 0 || count == total {
+						fmt.Printf("Progress: %d/%d bookmarks imported\n", count, total)
+					}
 				}
 			}
 		}(i)

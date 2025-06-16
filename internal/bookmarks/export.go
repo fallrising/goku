@@ -3,7 +3,6 @@ package bookmarks
 import (
 	"context"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"golang.org/x/net/html"
 	"strings"
 )
@@ -17,7 +16,8 @@ func (s *BookmarkService) ExportToHTML(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to count bookmarks: %w", err)
 	}
 
-	bar := progressbar.Default(int64(totalCount))
+	fmt.Printf("Exporting %d bookmarks to HTML...\n", totalCount)
+	exported := 0
 
 	var sb strings.Builder
 
@@ -44,12 +44,16 @@ func (s *BookmarkService) ExportToHTML(ctx context.Context) (string, error) {
 			if bookmark.Description != "" {
 				sb.WriteString(fmt.Sprintf("    <DD>%s\n", html.EscapeString(bookmark.Description)))
 			}
-			bar.Add(1)
+			exported++
+			if exported%50 == 0 || exported == totalCount {
+				fmt.Printf("Progress: %d/%d bookmarks exported\n", exported, totalCount)
+			}
 		}
 	}
 
 	// Close HTML
 	sb.WriteString("</DL><p>")
 
+	fmt.Printf("Export completed: %d bookmarks exported\n", exported)
 	return sb.String(), nil
 }

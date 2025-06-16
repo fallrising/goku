@@ -15,12 +15,12 @@ import (
 )
 
 type BookmarkService struct {
-	repo        interfaces.BookmarkRepository
-	duckDBStats *database.DuckDBStats
+	repo      interfaces.BookmarkRepository
+	sqliteStats *database.SQLiteStats
 }
 
-func NewBookmarkService(repo interfaces.BookmarkRepository, duckDBStats *database.DuckDBStats) *BookmarkService {
-	return &BookmarkService{repo: repo, duckDBStats: duckDBStats}
+func NewBookmarkService(repo interfaces.BookmarkRepository, sqliteStats *database.SQLiteStats) *BookmarkService {
+	return &BookmarkService{repo: repo, sqliteStats: sqliteStats}
 }
 
 func (s *BookmarkService) CreateBookmark(ctx context.Context, bookmark *models.Bookmark) error {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 )
 
 type PageContent struct {
@@ -60,7 +60,7 @@ func FetchPageContent(pageURL string) (*PageContent, bool, error) {
 		return &PageContent{FetchError: fmt.Sprintf("HTTP code: %d, cannot get metadata", resp.StatusCode)}, false, nil
 	}
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	doc, err := html.Parse(resp.Body)
 	if err != nil {
 		return &PageContent{FetchError: fmt.Sprintf("Failed to parse HTML: %v", err)}, false, nil
 	}
@@ -74,20 +74,20 @@ func FetchPageContent(pageURL string) (*PageContent, bool, error) {
 	return content, false, nil
 }
 
-func extractTitle(doc *goquery.Document) string {
-	title := doc.Find("title").First().Text()
+func extractTitle(doc *html.Node) string {
+	title := findTextContent(doc, "title")
 	return strings.TrimSpace(title)
 }
 
-func extractDescription(doc *goquery.Document, host string) string {
+func extractDescription(doc *html.Node, host string) string {
 	// Try standard meta description
-	description, _ := doc.Find("meta[name='description']").Attr("content")
+	description := findMetaContent(doc, "name", "description")
 	if description != "" {
 		return strings.TrimSpace(description)
 	}
 
 	// Try Open Graph description
-	description, _ = doc.Find("meta[property='og:description']").Attr("content")
+	description = findMetaContent(doc, "property", "og:description")
 	if description != "" {
 		return strings.TrimSpace(description)
 	}
@@ -98,28 +98,28 @@ func extractDescription(doc *goquery.Document, host string) string {
 		description = extractHackerNewsDescription(doc)
 	default:
 		// For other sites, try to get the first paragraph or heading
-		description = doc.Find("p, h1, h2").First().Text()
+		description = findFirstTextContent(doc, []string{"p", "h1", "h2"})
 	}
 
 	return strings.TrimSpace(description)
 }
 
-func extractHackerNewsDescription(doc *goquery.Document) string {
-	title := doc.Find("td.title").First().Text()
+func extractHackerNewsDescription(doc *html.Node) string {
+	title := findElementWithClass(doc, "td", "title")
 	return strings.TrimSpace(title)
 }
 
-func extractTags(doc *goquery.Document) []string {
+func extractTags(doc *html.Node) []string {
 	var tags []string
 
 	// Try to get tags from meta keywords
-	keywords, _ := doc.Find("meta[name='keywords']").Attr("content")
+	keywords := findMetaContent(doc, "name", "keywords")
 	if keywords != "" {
 		tags = append(tags, strings.Split(keywords, ",")...)
 	}
 
 	// Try to get tags from meta tags
-	metaTags, _ := doc.Find("meta[name='tags']").Attr("content")
+	metaTags := findMetaContent(doc, "name", "tags")
 	if metaTags != "" {
 		tags = append(tags, strings.Split(metaTags, ",")...)
 	}
@@ -245,7 +245,7 @@ func FetchMetadataFromWaybackMachine(urlStr string) (*PageContent, error) {
 	defer archivedResp.Body.Close()
 
 	// Parse the HTML
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	doc, err := html.Parse(archivedResp.Body)
 	if err != nil {
 		return &PageContent{FetchError: fmt.Sprintf("Failed to parse HTML: %v", err)}, nil
 	}
@@ -258,4 +258,123 @@ func FetchMetadataFromWaybackMachine(urlStr string) (*PageContent, error) {
 	}
 
 	return content, nil
+}
+
+// Helper functions for HTML parsing without goquery
+
+func findTextContent(doc *html.Node, tagName string) string {
+	var result string
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == tagName {
+			if n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
+				result = n.FirstChild.Data
+				return
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if result != "" {
+				return
+			}
+			traverse(c)
+		}
+	}
+	traverse(doc)
+	return result
+}
+
+func findMetaContent(doc *html.Node, attrName, attrValue string) string {
+	var result string
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "meta" {
+			var hasAttr bool
+			var content string
+			for _, attr := range n.Attr {
+				if attr.Key == attrName && attr.Val == attrValue {
+					hasAttr = true
+				}
+				if attr.Key == "content" {
+					content = attr.Val
+				}
+			}
+			if hasAttr && content != "" {
+				result = content
+				return
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if result != "" {
+				return
+			}
+			traverse(c)
+		}
+	}
+	traverse(doc)
+	return result
+}
+
+func findFirstTextContent(doc *html.Node, tagNames []string) string {
+	tagSet := make(map[string]bool)
+	for _, tag := range tagNames {
+		tagSet[tag] = true
+	}
+	
+	var result string
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
+		if n.Type == html.ElementNode && tagSet[n.Data] {
+			text := getTextContent(n)
+			if text != "" {
+				result = text
+				return
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if result != "" {
+				return
+			}
+			traverse(c)
+		}
+	}
+	traverse(doc)
+	return result
+}
+
+func findElementWithClass(doc *html.Node, tagName, className string) string {
+	var result string
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == tagName {
+			for _, attr := range n.Attr {
+				if attr.Key == "class" && attr.Val == className {
+					result = getTextContent(n)
+					return
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if result != "" {
+				return
+			}
+			traverse(c)
+		}
+	}
+	traverse(doc)
+	return result
+}
+
+func getTextContent(n *html.Node) string {
+	var text strings.Builder
+	var traverse func(*html.Node)
+	traverse = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			text.WriteString(node.Data)
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			traverse(c)
+		}
+	}
+	traverse(n)
+	return strings.TrimSpace(text.String())
 }

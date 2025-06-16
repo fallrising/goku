@@ -64,7 +64,6 @@ func setupDatabases(c *cli.Context) *bookmarks.BookmarkService {
 	user := c.String("user")
 	dbPath := getEnvOrDefault(fmt.Sprintf("GOKU_DB_PATH_%s", strings.ToUpper(user)), fmt.Sprintf("%s.db", user))
 	cacheDBPath := getEnvOrDefault(fmt.Sprintf("GOKU_CACHE_DB_PATH_%s", strings.ToUpper(user)), fmt.Sprintf("%s_cache.db", user))
-	duckDBPath := getEnvOrDefault(fmt.Sprintf("GOKU_DUCKDB_PATH_%s", strings.ToUpper(user)), fmt.Sprintf("%s_stats.duckdb", user))
 
 	db, err := database.NewDatabase(dbPath, cacheDBPath)
 	if err != nil {
@@ -75,16 +74,9 @@ func setupDatabases(c *cli.Context) *bookmarks.BookmarkService {
 		log.Fatalf("Failed to initialize database schema: %v", err)
 	}
 
-	duckDBStats, err := database.NewDuckDBStats(duckDBPath)
-	if err != nil {
-		log.Fatalf("Failed to initialize DuckDB: %v", err)
-	}
+	sqliteStats := database.NewSQLiteStats(db)
 
-	if err := duckDBStats.Init(); err != nil {
-		log.Fatalf("Failed to initialize DuckDB schema: %v", err)
-	}
-
-	return bookmarks.NewBookmarkService(db, duckDBStats)
+	return bookmarks.NewBookmarkService(db, sqliteStats)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
@@ -109,12 +101,6 @@ func getGlobalFlags() []cli.Flag {
 			Usage:   "Path to the Goku cache database file",
 		},
 		&cli.StringFlag{
-			Name:    "duckdb",
-			EnvVars: []string{"GOKU_DUCKDB_PATH"},
-			Value:   "goku_stats.duckdb",
-			Usage:   "Path to the Goku DuckDB statistics file",
-		},
-		&cli.StringFlag{
 			Name:    "user",
 			EnvVars: []string{"GOKU_USER"},
 			Value:   "goku",
@@ -136,7 +122,6 @@ func getCommands() []*cli.Command {
 		commands.TagsCommand(),
 		commands.StatsCommand(),
 		commands.PurgeCommand(),
-		commands.SyncCommand(),
 		commands.FetchCommand(),
 	}
 }
