@@ -7,21 +7,87 @@ import (
 	"golang.org/x/net/html"
 	"io"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/fallrising/goku-cli/internal/fetcher"
 	"github.com/fallrising/goku-cli/internal/mqtt"
 	"github.com/fallrising/goku-cli/pkg/models"
 )
 
+type ImportProgress struct {
+	Processed   int64
+	Total       int64
+	Errors      int64
+	StartTime   time.Time
+	LastSavePos int64
+	ResumeFile  string
+}
+
+func (p *ImportProgress) Report() string {
+	elapsed := time.Since(p.StartTime)
+	processed := atomic.LoadInt64(&p.Processed)
+	total := atomic.LoadInt64(&p.Total)
+	errors := atomic.LoadInt64(&p.Errors)
+	
+	if total == 0 {
+		return "No items to process"
+	}
+	
+	percent := float64(processed) / float64(total) * 100
+	rate := float64(processed) / elapsed.Seconds()
+	
+	return fmt.Sprintf("Progress: %d/%d (%.1f%%) | Errors: %d | Rate: %.1f/sec | Elapsed: %v",
+		processed, total, percent, errors, rate, elapsed.Round(time.Second))
+}
+
 func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int, error) {
+	return s.importFromJSONWithConfig(ctx, r, nil)
+}
+
+func (s *BookmarkService) ImportFromJSONResumable(ctx context.Context, r io.Reader, resumeFile string) (int, error) {
+	// Load progress from resume file if it exists
+	var startFrom int64 = 0
+	if resumeFile != "" {
+		if data, err := os.ReadFile(resumeFile); err == nil {
+			if pos, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
+				startFrom = pos
+				log.Printf("Resuming import from position %d", startFrom)
+			}
+		}
+	}
+
+	// Add resume context
+	ctx = context.WithValue(ctx, "resumeFile", resumeFile)
+	ctx = context.WithValue(ctx, "startFrom", startFrom)
+
+	return s.importFromJSONWithConfig(ctx, r, nil)
+}
+
+func (s *BookmarkService) importFromJSONWithConfig(ctx context.Context, r io.Reader, fetcherConfig *fetcher.FetchConfig) (int, error) {
 	log.Println("Starting ImportFromJSON process")
 	numWorkers := ctx.Value("numWorkers").(int)
 	if numWorkers <= 0 {
 		numWorkers = 3
+	}
+
+	// Get fetcher config from context if not provided
+	if fetcherConfig == nil {
+		if ctxConfig := ctx.Value("fetcherConfig"); ctxConfig != nil {
+			fetcherConfig = ctxConfig.(*fetcher.FetchConfig)
+		}
+	}
+
+	// Use custom fetcher if config provided
+	var f *fetcher.Fetcher
+	if fetcherConfig != nil {
+		f = fetcher.NewFetcher(fetcherConfig)
+	} else {
+		f = fetcher.GetDefaultFetcher()
 	}
 
 	// Read JSON content from the reader
@@ -44,6 +110,22 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 	// Use a map to store unique URLs
 	uniqueURLs := make(map[string]struct{})
 	var uniqueBookmarks []*models.Bookmark
+
+	// Initialize progress tracking
+	progress := &ImportProgress{
+		StartTime:  time.Now(),
+		ResumeFile: "",
+	}
+
+	// Check for resumable import
+	startFrom := int64(0)
+	if resumeFile := ctx.Value("resumeFile"); resumeFile != nil {
+		progress.ResumeFile = resumeFile.(string)
+		if pos := ctx.Value("startFrom"); pos != nil {
+			startFrom = pos.(int64)
+			progress.LastSavePos = startFrom
+		}
+	}
 
 	// First pass: extract unique bookmarks recursively from JSON
 	var extract func([]BookmarkItem)
@@ -70,18 +152,38 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 	}
 
 	extract(bookmarks)
+
+	// Apply resume logic - skip already processed bookmarks
+	if startFrom > 0 && startFrom < int64(len(uniqueBookmarks)) {
+		uniqueBookmarks = uniqueBookmarks[startFrom:]
+		log.Printf("Resuming: Skipping first %d bookmarks, processing %d remaining", startFrom, len(uniqueBookmarks))
+	}
+
+	atomic.StoreInt64(&progress.Total, int64(len(uniqueBookmarks)))
 	log.Printf("Found %d unique bookmarks to import", len(uniqueBookmarks))
 
 	// Progress tracking
-	var processed int64
-	total := int64(len(uniqueBookmarks))
-	fmt.Printf("Importing %d bookmarks...\n", total)
+	fmt.Printf("Importing %d bookmarks...\n", len(uniqueBookmarks))
 
 	// Get MQTT client from context if provided
 	var mqttClient *mqtt.Client
 	if client := ctx.Value("mqttClient"); client != nil {
 		mqttClient = client.(*mqtt.Client)
 	}
+
+	// Start progress reporter goroutine
+	progressTicker := time.NewTicker(10 * time.Second)
+	defer progressTicker.Stop()
+	go func() {
+		for {
+			select {
+			case <-progressTicker.C:
+				log.Println(progress.Report())
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	// Channel and sync structures for concurrent processing
 	bookmarkChan := make(chan *models.Bookmark, 100)
@@ -94,8 +196,25 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 		go func(workerID int) {
 			defer wg.Done()
 			for bookmark := range bookmarkChan {
+				// Fetch metadata using the configured fetcher
+				if content, retry, err := f.FetchPageContent(bookmark.URL); err == nil && content != nil {
+					if content.Title != "" {
+						bookmark.Title = content.Title
+					}
+					if content.Description != "" {
+						bookmark.Description = content.Description
+					}
+					if len(content.Tags) > 0 {
+						bookmark.Tags = content.Tags
+					}
+				} else if retry {
+					// Could retry later, but for now just log the error
+					log.Printf("Failed to fetch metadata for %s (retryable): %v", bookmark.URL, err)
+				}
+
 				if err := s.CreateBookmark(ctx, bookmark); err != nil {
 					resultChan <- fmt.Errorf("worker %d failed to import bookmark %s: %w", workerID, bookmark.URL, err)
+					atomic.AddInt64(&progress.Errors, 1)
 				} else {
 					// Publish to MQTT if client is available
 					if mqttClient != nil && mqttClient.IsConnected() {
@@ -105,9 +224,15 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 					}
 					
 					resultChan <- nil
-					count := atomic.AddInt64(&processed, 1)
-					if count%10 == 0 || count == total {
-						fmt.Printf("Progress: %d/%d bookmarks imported\n", count, total)
+				}
+
+				processed := atomic.AddInt64(&progress.Processed, 1)
+
+				// Save progress periodically for resumable imports
+				if progress.ResumeFile != "" && processed%100 == 0 {
+					currentPos := startFrom + processed
+					if err := os.WriteFile(progress.ResumeFile, []byte(fmt.Sprintf("%d", currentPos)), 0644); err != nil {
+						log.Printf("Failed to save resume progress: %v", err)
 					}
 				}
 			}
@@ -136,7 +261,8 @@ func (s *BookmarkService) ImportFromJSON(ctx context.Context, r io.Reader) (int,
 		}
 	}
 
-	fmt.Printf("Import completed: %d/%d bookmarks processed\n", processed, total)
+	log.Println(progress.Report())
+	fmt.Printf("Import completed: %d/%d bookmarks processed\n", atomic.LoadInt64(&progress.Processed), atomic.LoadInt64(&progress.Total))
 
 	// Calculate number of successfully created bookmarks
 	recordsCreated := len(uniqueBookmarks) - len(errors)

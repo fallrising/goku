@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
@@ -22,7 +23,124 @@ type PageContent struct {
 	FetchError  string
 }
 
-func FetchPageContent(pageURL string) (*PageContent, bool, error) {
+type FetchConfig struct {
+	Timeout           time.Duration
+	UserAgent         string
+	DomainDelay       time.Duration
+	MaxConcurrentDomains int
+	MaxFailuresPerDomain int
+	SkipDomainCooldown   time.Duration
+	BulkMode          bool
+}
+
+type DomainState struct {
+	lastRequest   time.Time
+	failureCount  int
+	skippedUntil  time.Time
+	mu            sync.Mutex
+}
+
+type Fetcher struct {
+	config      *FetchConfig
+	domainStates map[string]*DomainState
+	mu          sync.RWMutex
+}
+
+var (
+	defaultFetcher *Fetcher
+	once           sync.Once
+)
+
+func GetDefaultFetcher() *Fetcher {
+	once.Do(func() {
+		defaultFetcher = NewFetcher(&FetchConfig{
+			Timeout:              250 * time.Millisecond,
+			UserAgent:            "Goku-Bookmark-Manager/1.0 (+https://github.com/fallrising/goku)",
+			DomainDelay:          0,
+			MaxConcurrentDomains: 10,
+			MaxFailuresPerDomain: 3,
+			SkipDomainCooldown:   5 * time.Minute,
+			BulkMode:             false,
+		})
+	})
+	return defaultFetcher
+}
+
+func NewFetcher(config *FetchConfig) *Fetcher {
+	return &Fetcher{
+		config:       config,
+		domainStates: make(map[string]*DomainState),
+	}
+}
+
+func (f *Fetcher) getDomainState(domain string) *DomainState {
+	f.mu.RLock()
+	state, exists := f.domainStates[domain]
+	f.mu.RUnlock()
+
+	if !exists {
+		f.mu.Lock()
+		state, exists = f.domainStates[domain]
+		if !exists {
+			state = &DomainState{}
+			f.domainStates[domain] = state
+		}
+		f.mu.Unlock()
+	}
+	return state
+}
+
+func (f *Fetcher) shouldSkipDomain(domain string) bool {
+	state := f.getDomainState(domain)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	if time.Now().Before(state.skippedUntil) {
+		return true
+	}
+
+	if state.failureCount >= f.config.MaxFailuresPerDomain {
+		state.skippedUntil = time.Now().Add(f.config.SkipDomainCooldown)
+		return true
+	}
+
+	return false
+}
+
+func (f *Fetcher) waitForDomain(domain string) {
+	if f.config.DomainDelay == 0 {
+		return
+	}
+
+	state := f.getDomainState(domain)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	if !state.lastRequest.IsZero() {
+		elapsed := time.Since(state.lastRequest)
+		if elapsed < f.config.DomainDelay {
+			time.Sleep(f.config.DomainDelay - elapsed)
+		}
+	}
+	state.lastRequest = time.Now()
+}
+
+func (f *Fetcher) recordFailure(domain string) {
+	state := f.getDomainState(domain)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.failureCount++
+}
+
+func (f *Fetcher) recordSuccess(domain string) {
+	state := f.getDomainState(domain)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.failureCount = 0
+	state.skippedUntil = time.Time{}
+}
+
+func (f *Fetcher) FetchPageContent(pageURL string) (*PageContent, bool, error) {
 	// Validate URL structure
 	parsedURL, err := url.ParseRequestURI(pageURL)
 	if err != nil {
@@ -34,34 +152,57 @@ func FetchPageContent(pageURL string) (*PageContent, bool, error) {
 		return &PageContent{FetchError: "URL must have a valid host"}, false, nil
 	}
 
+	domain := parsedURL.Hostname()
+
+	// Check if we should skip this domain due to previous failures
+	if f.shouldSkipDomain(domain) {
+		return &PageContent{FetchError: "Domain temporarily skipped due to repeated failures"}, false, nil
+	}
+
 	if ValidateIfInternalIP(pageURL) {
 		return &PageContent{FetchError: "Internal IP addresses are not supported"}, false, nil
 	}
 
 	alive, err := IsWebsiteAccessible(pageURL)
 	if err != nil {
+		f.recordFailure(domain)
 		return &PageContent{FetchError: fmt.Sprintf("Failed to check website accessibility: %v", err)}, true, nil
 	}
 	if !alive {
+		f.recordFailure(domain)
 		return &PageContent{FetchError: "Website is not accessible"}, false, nil
 	}
 
+	// Wait for domain rate limiting
+	f.waitForDomain(domain)
+
 	client := &http.Client{
-		Timeout: 250 * time.Millisecond,
+		Timeout: f.config.Timeout,
 	}
 
-	resp, err := client.Get(pageURL)
+	req, err := http.NewRequest("GET", pageURL, nil)
 	if err != nil {
+		f.recordFailure(domain)
+		return &PageContent{FetchError: fmt.Sprintf("Failed to create request: %v", err)}, false, nil
+	}
+
+	req.Header.Set("User-Agent", f.config.UserAgent)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		f.recordFailure(domain)
 		return &PageContent{FetchError: fmt.Sprintf("Failed to fetch URL: %v", err)}, false, nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		f.recordFailure(domain)
 		return &PageContent{FetchError: fmt.Sprintf("HTTP code: %d, cannot get metadata", resp.StatusCode)}, false, nil
 	}
 
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
+		f.recordFailure(domain)
 		return &PageContent{FetchError: fmt.Sprintf("Failed to parse HTML: %v", err)}, false, nil
 	}
 
@@ -71,7 +212,12 @@ func FetchPageContent(pageURL string) (*PageContent, bool, error) {
 		Tags:        extractTags(doc),
 	}
 
+	f.recordSuccess(domain)
 	return content, false, nil
+}
+
+func FetchPageContent(pageURL string) (*PageContent, bool, error) {
+	return GetDefaultFetcher().FetchPageContent(pageURL)
 }
 
 func extractTitle(doc *html.Node) string {
