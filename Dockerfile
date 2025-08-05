@@ -1,6 +1,6 @@
 # === Builder Stage ===
 # Use a Debian-based Go image (e.g., Bookworm) for better glibc compatibility with Cgo
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.24-bookworm AS builder
 
 # Set the working directory inside the container
 WORKDIR /app
